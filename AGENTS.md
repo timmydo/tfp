@@ -15,6 +15,8 @@ User <-> AI Agent <-> plan.json -> tfp.py -> report.html
 ## Commit Policy
 
 - Agent-created commits must include a `Co-Authored-By:` trailer.
+- Run `python3 -m pytest -q` before committing.
+- Do not commit if tests are failing.
 
 ## JSON File Specification
 
