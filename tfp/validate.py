@@ -138,6 +138,7 @@ def validate_plan(plan: Plan) -> ValidationResult:
 
     account_names: set[str] = set()
     asset_names: set[str] = set()
+    asset_index_by_name: dict[str, int] = {}
 
     for idx, account in enumerate(plan.accounts):
         base = f"accounts[{idx}]"
@@ -251,6 +252,7 @@ def validate_plan(plan: Plan) -> ValidationResult:
         if asset.name in asset_names:
             result.errors.append(f"{base}.name: duplicate real asset name '{asset.name}'")
         asset_names.add(asset.name)
+        asset_index_by_name[asset.name] = idx
         _check_enum(result, f"{base}.change_over_time", asset.change_over_time, CHANGE_OVER_TIME)
         if asset.change_over_time in REQUIRES_CHANGE_RATE and asset.change_rate is None:
             result.errors.append(f"{base}.change_rate: required when change_over_time is '{asset.change_over_time}'")
@@ -269,8 +271,9 @@ def validate_plan(plan: Plan) -> ValidationResult:
         if txn.type == "sell_asset" and txn.linked_asset:
             referenced = next((a for a in plan.real_assets if a.name == txn.linked_asset), None)
             if referenced is not None and referenced.purchase_price is None:
+                asset_idx = asset_index_by_name.get(txn.linked_asset, idx)
                 result.errors.append(
-                    f"real_assets[{idx}].purchase_price: required for assets referenced by sell_asset transactions"
+                    f"real_assets[{asset_idx}].purchase_price: required for assets referenced by sell_asset transactions"
                 )
 
     for idx, transfer in enumerate(plan.transfers):
@@ -316,6 +319,10 @@ def validate_plan(plan: Plan) -> ValidationResult:
             result.errors.append(f"{base}.to_account: '{conversion.to_account}' does not match any account name")
         elif dst.type != "roth_ira":
             result.errors.append(f"{base}.to_account: must be roth_ira")
+        has_fixed_amount = conversion.annual_amount is not None
+        has_fill_target = conversion.fill_to_bracket is not None
+        if has_fixed_amount == has_fill_target:
+            result.errors.append(f"{base}: provide exactly one of annual_amount or fill_to_bracket")
 
     if plan.withdrawal_strategy.use_account_specific:
         for idx, name in enumerate(plan.withdrawal_strategy.account_specific_order):

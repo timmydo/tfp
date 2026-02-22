@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import random
+import warnings
 
 from .engine import run_deterministic
 from .schema import Plan
@@ -55,6 +56,11 @@ def run_simulation(plan: Plan, mode_override: str | None = None, runs_override: 
         if seed is None:
             seed = random.randint(1, 2**31 - 1)
         random.seed(seed)
+        warnings.warn(
+            f"{mode} currently falls back to deterministic engine output",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
     annual, insolvency_years = _build_annual_summary(plan)
     return SimulationResult(mode=mode, seed=seed, annual=annual, insolvency_years=insolvency_years)

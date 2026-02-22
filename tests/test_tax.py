@@ -1,6 +1,9 @@
+import pytest
+
 from tfp.schema import ItemizedDeductions, TaxSettings
 from tfp.tax import (
     YearIncomeSummary,
+    compute_fica,
     compute_capital_gains_tax,
     compute_federal_income_tax,
     compute_total_tax,
@@ -65,3 +68,49 @@ def test_compute_total_tax_with_overrides():
     assert round(result.capital_gains_tax, 2) == 3_000.00
     assert round(result.early_withdrawal_penalty, 2) == 1_000.00
     assert round(result.total_tax, 2) == 46_500.00
+
+
+def test_niit_uses_combined_investment_base():
+    settings = _default_tax_settings()
+    settings.amt_enabled = False
+    settings.state_effective_rate_override = 0.0
+    settings.federal_effective_rate_override = 0.0
+    settings.capital_gains_rate_override = 0.0
+
+    result = compute_total_tax(
+        YearIncomeSummary(
+            year=2026,
+            filing_status="single",
+            state="CA",
+            ordinary_income=250_000,
+            capital_gains=40_000,
+            qualified_dividends=10_000,
+            investment_income=20_000,
+            itemized_deductions=0,
+        ),
+        settings,
+    )
+
+    # NIIT base = min(20k + 50k, AGI-threshold(100k)) = 70k
+    assert round(result.niit_tax, 2) == 2660.00
+
+
+def test_fica_additional_medicare_uses_joint_threshold():
+    single = compute_fica(300_000, 0, 2026, filing_status="single")
+    mfj = compute_fica(300_000, 0, 2026, filing_status="married_filing_jointly")
+    assert mfj < single
+
+
+def test_invalid_filing_status_raises():
+    settings = _default_tax_settings()
+    with pytest.raises(ValueError, match="unsupported filing_status"):
+        compute_total_tax(
+            YearIncomeSummary(
+                year=2026,
+                filing_status="bad_status",
+                state="CA",
+                ordinary_income=10_000,
+                capital_gains=0,
+            ),
+            settings,
+        )

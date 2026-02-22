@@ -102,3 +102,20 @@ def test_duplicate_names_are_rejected(tmp_path, sample_plan_dict):
     result = _run_validation(tmp_path, sample_plan_dict, mutator)
     assert "accounts[6].name: duplicate account name 'Joint Checking'" in result.errors
     assert "real_assets[1].name: duplicate real asset name 'Primary Home'" in result.errors
+
+
+def test_sell_asset_purchase_price_error_points_to_asset_index(tmp_path, sample_plan_dict):
+    def mutator(data):
+        data["real_assets"][1]["purchase_price"] = None
+
+    result = _run_validation(tmp_path, sample_plan_dict, mutator)
+    assert "real_assets[1].purchase_price: required for assets referenced by sell_asset transactions" in result.errors
+
+
+def test_roth_conversion_requires_exactly_one_amount_mode(tmp_path, sample_plan_dict):
+    def mutator(data):
+        data["roth_conversions"][0]["annual_amount"] = None
+        data["roth_conversions"][0]["fill_to_bracket"] = None
+
+    result = _run_validation(tmp_path, sample_plan_dict, mutator)
+    assert "roth_conversions[0]: provide exactly one of annual_amount or fill_to_bracket" in result.errors

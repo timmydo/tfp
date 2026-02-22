@@ -46,3 +46,12 @@ def test_load_plan_rejects_invalid_nested_object_type(tmp_path, sample_plan_dict
 
     with pytest.raises(SchemaError, match=r"people\.primary: expected object"):
         load_plan(path)
+
+
+def test_load_plan_allows_missing_purchase_price_for_unsold_asset(tmp_path, sample_plan_dict):
+    data = clone_plan(sample_plan_dict)
+    data["real_assets"][0].pop("purchase_price", None)
+    path = write_plan(tmp_path, data)
+
+    plan = load_plan(path)
+    assert plan.real_assets[0].purchase_price is None

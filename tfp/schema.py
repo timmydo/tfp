@@ -352,7 +352,7 @@ class MaintenanceExpense:
 class RealAsset:
     name: str
     current_value: float
-    purchase_price: float
+    purchase_price: float | None
     primary_residence: bool
     change_over_time: str
     change_rate: float | None
@@ -374,7 +374,7 @@ class RealAsset:
         return cls(
             name=_require(data, "name", path),
             current_value=float(_require(data, "current_value", path)),
-            purchase_price=float(_require(data, "purchase_price", path)),
+            purchase_price=float(_optional(data, "purchase_price")) if _optional(data, "purchase_price") is not None else None,
             primary_residence=bool(_require(data, "primary_residence", path)),
             change_over_time=_require(data, "change_over_time", path),
             change_rate=float(change_rate) if change_rate is not None else None,

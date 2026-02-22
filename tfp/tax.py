@@ -54,7 +54,7 @@ def _year_factor(year: int, inflation_rate: float) -> float:
 def _normalize_filing_status(filing_status: str) -> str:
     if filing_status in FEDERAL_BRACKETS[BASE_TAX_YEAR]:
         return filing_status
-    return "single"
+    raise ValueError(f"unsupported filing_status: {filing_status}")
 
 
 def _adjusted_standard_deduction(filing_status: str, year: int, inflation_rate: float) -> float:
@@ -206,7 +206,13 @@ def compute_state_tax(
     return max(0.0, taxable_income) * rate
 
 
-def compute_fica(wages: float, ytd_wages: float, year: int, inflation_rate: float = DEFAULT_BRACKET_INFLATION) -> float:
+def compute_fica(
+    wages: float,
+    ytd_wages: float,
+    year: int,
+    inflation_rate: float = DEFAULT_BRACKET_INFLATION,
+    filing_status: str = "single",
+) -> float:
     if wages <= 0:
         return 0.0
 
@@ -216,7 +222,12 @@ def compute_fica(wages: float, ytd_wages: float, year: int, inflation_rate: floa
     ss_wage_base = base["social_security_wage_base"] * factor
     medicare_rate = base["medicare_rate"]
     additional_rate = base["additional_medicare_rate"]
-    additional_threshold = base["additional_medicare_single_threshold"] * factor
+    if filing_status in {"married_filing_jointly", "qualifying_surviving_spouse"}:
+        additional_threshold = base["additional_medicare_joint_threshold"] * factor
+    elif filing_status == "married_filing_separately":
+        additional_threshold = 125_000.0 * factor
+    else:
+        additional_threshold = base["additional_medicare_single_threshold"] * factor
 
     ss_taxable = max(0.0, min(wages, ss_wage_base - max(0.0, ytd_wages)))
     ss_tax = ss_taxable * ss_rate
@@ -292,7 +303,7 @@ def compute_total_tax(
 
     niit_tax = 0.0
     if tax_settings.niit_enabled:
-        niit_base = max(investment_income, gross_ltcg)
+        niit_base = max(0.0, investment_income) + max(0.0, gross_ltcg)
         niit_tax = compute_niit(niit_base, agi, filing_status, summary.year, inflation_rate)
 
     amt_tax = 0.0

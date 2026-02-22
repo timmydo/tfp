@@ -179,3 +179,52 @@ def test_december_tax_refund_is_recorded(tmp_path, sample_plan_dict):
     assert annual.tax_refund > 0
     assert annual.tax_payment == 0
     assert december.tax_settlement < 0
+
+
+def test_primary_residence_sale_applies_gain_exclusion(tmp_path, sample_plan_dict):
+    data = clone_plan(sample_plan_dict)
+    data["plan_settings"]["plan_start"] = "2031-06"
+    data["plan_settings"]["plan_end"] = "2031-06"
+    data["income"] = []
+    data["expenses"] = []
+    data["contributions"] = []
+    data["transfers"] = []
+    data["healthcare"]["pre_medicare"] = []
+    data["healthcare"]["post_medicare"] = []
+    data["accounts"] = [a for a in data["accounts"] if a["type"] == "cash"]
+    data["accounts"][0]["balance"] = 0
+    data["real_assets"] = [
+        {
+            "name": "Primary Home",
+            "current_value": 1_200_000,
+            "purchase_price": 300_000,
+            "primary_residence": True,
+            "change_over_time": "fixed",
+            "change_rate": None,
+            "property_tax_rate": 0.0,
+            "mortgage": None,
+            "maintenance_expenses": [],
+        }
+    ]
+    data["transactions"] = [
+        {
+            "name": "Sell home",
+            "date": "2031-06",
+            "type": "sell_asset",
+            "amount": 1_100_000,
+            "fees": 0,
+            "tax_treatment": "capital_gains",
+            "linked_asset": "Primary Home",
+            "deposit_to_account": "Joint Checking",
+        }
+    ]
+    data["rmds"]["enabled"] = False
+    data["roth_conversions"] = []
+
+    path = write_plan(tmp_path, data)
+    plan = load_plan(path)
+    result = run_deterministic(plan)
+
+    month = result.monthly[0]
+    # MFJ exclusion is 500k: gain = 1.1m - 300k - 500k = 300k
+    assert round(month.realized_capital_gains, 2) == 300000.00

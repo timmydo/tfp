@@ -200,6 +200,12 @@ def _pick_cash_account(accounts: list[Account]) -> str:
     raise ValueError("at least one cash account is required")
 
 
+def _primary_residence_exclusion(filing_status: str) -> float:
+    if filing_status == "married_filing_jointly":
+        return 500_000.0
+    return 250_000.0
+
+
 def _active_income_items(
     items: list[Income],
     *,
@@ -524,7 +530,11 @@ def run_deterministic(plan: Plan) -> EngineResult:
             if txn.type == "sell_asset" and txn.linked_asset and txn.linked_asset in real_asset_state:
                 state = real_asset_state.pop(txn.linked_asset)
                 proceeds = max(0.0, txn.amount - txn.fees)
-                gain = max(0.0, proceeds - state.asset.purchase_price)
+                basis = state.asset.purchase_price or 0.0
+                gain = max(0.0, proceeds - basis)
+                if state.asset.primary_residence:
+                    exclusion = _primary_residence_exclusion(plan.filing_status)
+                    gain = max(0.0, gain - exclusion)
                 if txn.tax_treatment == "capital_gains":
                     month_realized_cg += gain
                 elif txn.tax_treatment == "income":
@@ -631,7 +641,7 @@ def run_deterministic(plan: Plan) -> EngineResult:
                     ordinary_income=annual.taxable_ordinary_income,
                     capital_gains=annual.realized_capital_gains,
                     qualified_dividends=annual.qualified_dividends,
-                    investment_income=annual.realized_capital_gains + annual.qualified_dividends,
+                    investment_income=0.0,
                     itemized_deductions=itemized,
                     withheld_tax=annual.tax_withheld,
                     early_withdrawal_penalty=early_withdrawal_penalties[year],
