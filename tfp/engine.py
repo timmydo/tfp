@@ -15,6 +15,7 @@ from .real_assets import (
     appreciate_asset,
 )
 from .schema import Account, Expense, Income, Plan
+from .tax import YearIncomeSummary, compute_total_tax
 from .withdrawals import cover_shortfall
 
 
@@ -34,6 +35,7 @@ class MonthResult:
     growth: float
     dividends: float
     fees: float
+    tax_settlement: float
     net_worth_end: float
     insolvent: bool
 
@@ -53,6 +55,17 @@ class AnnualResult:
     growth: float = 0.0
     dividends: float = 0.0
     fees: float = 0.0
+    taxable_ordinary_income: float = 0.0
+    qualified_dividends: float = 0.0
+    tax_federal: float = 0.0
+    tax_capital_gains: float = 0.0
+    tax_state: float = 0.0
+    tax_niit: float = 0.0
+    tax_amt: float = 0.0
+    tax_penalties: float = 0.0
+    tax_total: float = 0.0
+    tax_refund: float = 0.0
+    tax_payment: float = 0.0
     net_worth_end: float = 0.0
     insolvent: bool = False
 
@@ -281,6 +294,9 @@ def run_deterministic(plan: Plan) -> EngineResult:
         month_growth = 0.0
         month_dividends = 0.0
         month_fees = 0.0
+        month_tax_settlement = 0.0
+        month_taxable_ordinary_income = 0.0
+        month_qualified_dividends = 0.0
         insolvent = False
 
         # Step 2/4: Income collection and withholding.
@@ -305,6 +321,7 @@ def run_deterministic(plan: Plan) -> EngineResult:
             month_income += amount
             income_by_name[income.name] = income_by_name.get(income.name, 0.0) + amount
             if income.tax_handling == "withhold" and income.withhold_percent is not None:
+                month_taxable_ordinary_income += amount
                 withheld = amount * income.withhold_percent
                 balances[cash_account] -= withheld
                 month_withheld += withheld
@@ -380,6 +397,8 @@ def run_deterministic(plan: Plan) -> EngineResult:
             to_account = accounts_by_name[transfer.to_account]
             if from_account.type == "taxable_brokerage" and transfer.from_account in cost_basis:
                 month_realized_cg += cost_basis[transfer.from_account].withdraw(amount, source_before)
+            elif transfer.tax_treatment == "income":
+                month_taxable_ordinary_income += amount
             if to_account.type == "taxable_brokerage" and transfer.to_account in cost_basis:
                 cost_basis[transfer.to_account].add_basis(amount)
 
@@ -399,6 +418,13 @@ def run_deterministic(plan: Plan) -> EngineResult:
             if dividend <= 0:
                 continue
             month_dividends += dividend
+            dividend_treatment = account.dividend_tax_treatment
+            if dividend_treatment == "plan_settings":
+                dividend_treatment = plan.plan_settings.default_dividend_tax_treatment
+            if dividend_treatment == "income":
+                month_taxable_ordinary_income += dividend
+            elif dividend_treatment == "capital_gains":
+                month_qualified_dividends += dividend
             if account.reinvest_dividends:
                 balances[account.name] += dividend
                 if account.type == "taxable_brokerage" and account.name in cost_basis:
@@ -446,6 +472,8 @@ def run_deterministic(plan: Plan) -> EngineResult:
                 gain = max(0.0, proceeds - state.asset.purchase_price)
                 if txn.tax_treatment == "capital_gains":
                     month_realized_cg += gain
+                elif txn.tax_treatment == "income":
+                    month_taxable_ordinary_income += gain
                 deposit = txn.deposit_to_account or cash_account
                 balances[deposit] += proceeds
             elif txn.type == "buy_asset":
@@ -529,6 +557,10 @@ def run_deterministic(plan: Plan) -> EngineResult:
             )
             month_withdrawals += sum(e.amount for e in events)
             month_realized_cg += gains
+            for event in events:
+                event_account = accounts_by_name[event.account]
+                if event_account.type in {"401k", "traditional_ira"}:
+                    month_taxable_ordinary_income += event.amount
             if remaining > 0:
                 insolvent = True
 
@@ -538,11 +570,92 @@ def run_deterministic(plan: Plan) -> EngineResult:
             insolvent = True
 
         # Step 20: cost basis updates are handled inline.
+        # Step 21: Monthly recording and annual rollup.
+        annual.income += month_income
+        annual.tax_withheld += month_withheld
+        annual.contributions += month_contributions
+        annual.transfers += month_transfers
+        annual.healthcare_expenses += month_healthcare
+        annual.other_expenses += month_other_expenses
+        annual.real_asset_expenses += month_real_asset_expenses
+        annual.withdrawals += month_withdrawals
+        annual.realized_capital_gains += month_realized_cg
+        annual.growth += month_growth
+        annual.dividends += month_dividends
+        annual.fees += month_fees
+        annual.taxable_ordinary_income += month_taxable_ordinary_income
+        annual.qualified_dividends += month_qualified_dividends
 
-        # Step 21: monthly recording.
+        if month == 12:
+            itemized = min(plan.tax_settings.itemized_deductions.salt_cap, max(0.0, annual.tax_state))
+            itemized += max(0.0, plan.tax_settings.itemized_deductions.charitable_contributions)
+            if plan.tax_settings.itemized_deductions.mortgage_interest_deductible:
+                # Use a fixed share of real-asset expenses as a simple mortgage-interest proxy.
+                itemized += max(0.0, annual.real_asset_expenses * 0.30)
+
+            tax_result = compute_total_tax(
+                YearIncomeSummary(
+                    year=year,
+                    filing_status=plan.filing_status,
+                    state=plan.people.primary.state or "CA",
+                    ordinary_income=annual.taxable_ordinary_income,
+                    capital_gains=annual.realized_capital_gains,
+                    qualified_dividends=annual.qualified_dividends,
+                    investment_income=annual.realized_capital_gains + annual.qualified_dividends,
+                    itemized_deductions=itemized,
+                    withheld_tax=annual.tax_withheld,
+                    early_withdrawal_penalty=0.0,
+                ),
+                plan.tax_settings,
+                inflation_rate=inflation_rate,
+            )
+            annual.tax_federal = tax_result.federal_income_tax
+            annual.tax_capital_gains = tax_result.capital_gains_tax
+            annual.tax_state = tax_result.state_income_tax
+            annual.tax_niit = tax_result.niit_tax
+            annual.tax_amt = tax_result.amt_tax
+            annual.tax_penalties = tax_result.early_withdrawal_penalty
+            annual.tax_total = tax_result.total_tax
+
+            settlement = tax_result.total_tax - annual.tax_withheld
+            if settlement > 0:
+                if balances[cash_account] < settlement:
+                    remaining, events, gains = cover_shortfall(
+                        shortfall=settlement - balances[cash_account],
+                        balances=balances,
+                        accounts=accounts_by_name,
+                        strategy=plan.withdrawal_strategy,
+                        cash_account_name=cash_account,
+                        cost_basis=cost_basis,
+                    )
+                    extra_withdrawals = sum(e.amount for e in events)
+                    month_withdrawals += extra_withdrawals
+                    annual.withdrawals += extra_withdrawals
+                    month_realized_cg += gains
+                    annual.realized_capital_gains += gains
+                    for event in events:
+                        event_account = accounts_by_name[event.account]
+                        if event_account.type in {"401k", "traditional_ira"}:
+                            month_taxable_ordinary_income += event.amount
+                            annual.taxable_ordinary_income += event.amount
+                    if remaining > 0:
+                        insolvent = True
+                balances[cash_account] -= settlement
+                annual.tax_payment = settlement
+                month_tax_settlement = settlement
+            else:
+                refund = abs(settlement)
+                balances[cash_account] += refund
+                annual.tax_refund = refund
+                month_tax_settlement = -refund
+
         net_worth_end = sum(max(0.0, bal) for bal in balances.values()) + sum(
             max(0.0, state.current_value) for state in real_asset_state.values()
         )
+        if balances[cash_account] < 0:
+            insolvent = True
+        annual.net_worth_end = net_worth_end
+        annual.insolvent = annual.insolvent or insolvent
 
         month_result = MonthResult(
             year=year,
@@ -559,25 +672,11 @@ def run_deterministic(plan: Plan) -> EngineResult:
             growth=month_growth,
             dividends=month_dividends,
             fees=month_fees,
+            tax_settlement=month_tax_settlement,
             net_worth_end=net_worth_end,
             insolvent=insolvent,
         )
         monthly_results.append(month_result)
-
-        annual.income += month_income
-        annual.tax_withheld += month_withheld
-        annual.contributions += month_contributions
-        annual.transfers += month_transfers
-        annual.healthcare_expenses += month_healthcare
-        annual.other_expenses += month_other_expenses
-        annual.real_asset_expenses += month_real_asset_expenses
-        annual.withdrawals += month_withdrawals
-        annual.realized_capital_gains += month_realized_cg
-        annual.growth += month_growth
-        annual.dividends += month_dividends
-        annual.fees += month_fees
-        annual.net_worth_end = net_worth_end
-        annual.insolvent = annual.insolvent or insolvent
 
     annual_results = [annual_by_year[y] for y in sorted(annual_by_year)]
     insolvency_years = [row.year for row in annual_results if row.insolvent]

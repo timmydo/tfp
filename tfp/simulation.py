@@ -31,7 +31,8 @@ def _build_annual_summary(plan: Plan) -> tuple[list[AnnualSummary], list[int]]:
     annual: list[AnnualSummary] = []
     for row in engine_result.annual:
         expenses = row.healthcare_expenses + row.other_expenses + row.real_asset_expenses
-        net_flow = row.income - expenses - row.tax_withheld
+        taxes = row.tax_total if row.tax_total > 0 else row.tax_withheld
+        net_flow = row.income - expenses - taxes
         annual.append(
             AnnualSummary(
                 year=row.year,
