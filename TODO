@@ -2,19 +2,6 @@ Blank-slate next steps (remaining work only)
 
 1. Immediate next target
 
-Implement a real bundled historical return dataset in `tfp/historical_data.py`.
-
-- Replace the current synthetic/generated series with fixed annual returns for 1926-2024.
-- Keep shape compatible with existing simulation code (`{year: (stocks, bonds)}`).
-- Ensure coverage is exactly continuous from 1926 through 2024.
-- Add tests that verify:
-  - first/last year presence,
-  - full-year continuity,
-  - deterministic repeatability,
-  - known-point spot checks for selected years.
-
-2. Report phase (still largely open)
-
 Implement the full Phase 6 HTML/report stack from `PLAN.md`.
 
 - Add `charts.py`, `sankey.py`, and `templates.py` and wire them from `report.py`.
@@ -35,7 +22,7 @@ Implement the full Phase 6 HTML/report stack from `PLAN.md`.
 - Add dashboard/tabs layout and insolvency highlighting.
 - Include report metadata (mode, seed, timestamp, plan hash).
 
-3. Verification/test expansion
+2. Verification/test expansion
 
 Add missing tests called out by PLAN.md.
 
@@ -43,19 +30,18 @@ Add missing tests called out by PLAN.md.
 - Boundary interaction tests (SS start month, Medicare transition, RMD start year, mortgage payoff month).
 - Integration tests for:
   - MC reproducibility with fixed seed,
-  - insolvency path/report visibility,
-  - generated HTML basic structure/parse checks.
+- insolvency path/report visibility,
+- generated HTML basic structure/parse checks.
 
-4. Optional hardening after above
+3. Optional hardening after above
 
 - Extend numeric range validation coverage to all remaining percent/rate fields not yet bounded.
 - Audit any remaining TODO/FIXME comments once report work lands.
 
 Execution order recommendation:
-1) Historical dataset replacement + tests
-2) Report/charts/sankey/tables implementation
-3) Golden + integration test suite
-4) Final validation hardening pass
+1) Report/charts/sankey/tables implementation
+2) Golden + integration test suite
+3) Final validation hardening pass
 
 Notes:
 - Keep JSON-path-specific validation error quality.
