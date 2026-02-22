@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from .cost_basis import CostBasisTracker
@@ -42,6 +42,8 @@ class MonthResult:
     tax_settlement: float
     net_worth_end: float
     insolvent: bool
+    account_balances_end: dict[str, float]
+    withdrawal_sources: dict[str, float]
 
 
 @dataclass(slots=True)
@@ -76,10 +78,25 @@ class AnnualResult:
 
 
 @dataclass(slots=True)
+class AccountAnnualDetail:
+    year: int
+    account: str
+    starting_balance: float = 0.0
+    contributions: float = 0.0
+    withdrawals: float = 0.0
+    growth: float = 0.0
+    dividends: float = 0.0
+    fees: float = 0.0
+    ending_balance: float = 0.0
+
+
+@dataclass(slots=True)
 class EngineResult:
     monthly: list[MonthResult]
     annual: list[AnnualResult]
     insolvency_years: list[int]
+    account_annual: dict[str, list[AccountAnnualDetail]]
+    withdrawal_sources_by_year: dict[int, dict[str, float]]
 
 
 def _parse_ym(value: str) -> tuple[int, int]:
@@ -286,14 +303,47 @@ def run_deterministic(
 
     monthly_results: list[MonthResult] = []
     annual_by_year: dict[int, AnnualResult] = {}
+    account_annual_by_year: dict[int, dict[str, AccountAnnualDetail]] = {}
+    withdrawal_sources_by_year: dict[int, dict[str, float]] = {}
 
     months = _iter_months(plan_start, plan_end)
     prior_year_end_balances = {name: balance for name, balance in balances.items()}
     irmaa_magi_history: dict[int, float] = {}
     early_withdrawal_penalties: dict[int, float] = {}
 
+    def _year_account_detail(target_year: int, account_name: str) -> AccountAnnualDetail:
+        year_map = account_annual_by_year.setdefault(target_year, {})
+        detail = year_map.get(account_name)
+        if detail is None:
+            detail = AccountAnnualDetail(
+                year=target_year,
+                account=account_name,
+                starting_balance=max(0.0, balances.get(account_name, 0.0)),
+                ending_balance=max(0.0, balances.get(account_name, 0.0)),
+            )
+            year_map[account_name] = detail
+        return detail
+
+    def _add_contribution(target_year: int, account_name: str, amount: float) -> None:
+        if amount <= 0:
+            return
+        _year_account_detail(target_year, account_name).contributions += amount
+
+    def _add_withdrawal(target_year: int, account_name: str, amount: float) -> None:
+        if amount <= 0:
+            return
+        _year_account_detail(target_year, account_name).withdrawals += amount
+
+    def _add_withdrawal_source(target_year: int, account_name: str, amount: float) -> None:
+        if amount <= 0:
+            return
+        source_map = withdrawal_sources_by_year.setdefault(target_year, {})
+        source_map[account_name] = source_map.get(account_name, 0.0) + amount
+
     for year, month, current_index in months:
         annual = annual_by_year.setdefault(year, AnnualResult(year=year))
+        for account in plan.accounts:
+            _year_account_detail(year, account.name)
         owner_ages = {
             "primary": _age_years_at_month(plan.people.primary.birthday, year, month),
             "spouse": _age_years_at_month(plan.people.spouse.birthday, year, month) if plan.people.spouse else 0.0,
@@ -316,6 +366,7 @@ def run_deterministic(
         month_taxable_ordinary_income = 0.0
         month_qualified_dividends = 0.0
         insolvent = False
+        month_withdrawal_sources: dict[str, float] = {}
         early_withdrawal_penalties.setdefault(year, 0.0)
 
         # Step 2/4: Income collection and withholding.
@@ -337,12 +388,14 @@ def run_deterministic(
                 plan_start=plan_start,
             )
             balances[cash_account] += amount
+            _add_contribution(year, cash_account, amount)
             month_income += amount
             income_by_name[income.name] = income_by_name.get(income.name, 0.0) + amount
             if income.tax_handling == "withhold" and income.withhold_percent is not None:
                 month_taxable_ordinary_income += amount
                 withheld = amount * income.withhold_percent
                 balances[cash_account] -= withheld
+                _add_withdrawal(year, cash_account, withheld)
                 month_withheld += withheld
 
         ss_income, _ = monthly_social_security_income(
@@ -352,6 +405,7 @@ def run_deterministic(
         )
         if ss_income > 0:
             balances[cash_account] += ss_income
+            _add_contribution(year, cash_account, ss_income)
             month_income += ss_income
             # v1 simplification: estimate 85% of SS benefits as taxable.
             month_taxable_ordinary_income += ss_income * 0.85
@@ -383,12 +437,15 @@ def run_deterministic(
             dest = contribution.destination_account
             if source == "income":
                 balances[cash_account] -= amount
+                _add_withdrawal(year, cash_account, amount)
             else:
                 source_before = balances[source]
                 balances[source] -= amount
+                _add_withdrawal(year, source, amount)
                 if accounts_by_name[source].type == "taxable_brokerage" and source in cost_basis:
                     month_realized_cg += cost_basis[source].withdraw(amount, source_before)
             balances[dest] += amount
+            _add_contribution(year, dest, amount)
             if accounts_by_name[dest].type == "taxable_brokerage" and dest in cost_basis:
                 cost_basis[dest].add_basis(amount)
             month_contributions += amount
@@ -399,6 +456,7 @@ def run_deterministic(
                 match_amount = min(amount, match_cap) * contribution.employer_match.match_percent
                 if match_amount > 0:
                     balances[dest] += match_amount
+                    _add_contribution(year, dest, match_amount)
                     if accounts_by_name[dest].type == "taxable_brokerage" and dest in cost_basis:
                         cost_basis[dest].add_basis(match_amount)
                     month_contributions += match_amount
@@ -421,6 +479,8 @@ def run_deterministic(
             source_before = balances[transfer.from_account]
             balances[transfer.from_account] -= amount
             balances[transfer.to_account] += amount
+            _add_withdrawal(year, transfer.from_account, amount)
+            _add_contribution(year, transfer.to_account, amount)
             month_transfers += amount
 
             from_account = accounts_by_name[transfer.from_account]
@@ -434,6 +494,10 @@ def run_deterministic(
 
         # Steps 9-10: Roth conversions and RMD processing.
         if month == 12 and plan.withdrawal_strategy.rmd_satisfied_first:
+            rmd_before = {
+                name: balances.get(name, 0.0)
+                for name in set(plan.rmds.accounts + [plan.rmds.destination_account])
+            }
             rmd_withdrawn, rmd_ordinary_income = execute_rmds(
                 settings=plan.rmds,
                 accounts_by_name=accounts_by_name,
@@ -441,9 +505,23 @@ def run_deterministic(
                 prior_year_end_balances=prior_year_end_balances,
                 owner_ages=owner_ages,
             )
+            if rmd_withdrawn > 0:
+                for account_name in plan.rmds.accounts:
+                    before = rmd_before.get(account_name, 0.0)
+                    after = balances.get(account_name, 0.0)
+                    withdrawn = max(0.0, before - after)
+                    if withdrawn > 0:
+                        _add_withdrawal(year, account_name, withdrawn)
+                        _add_withdrawal_source(year, account_name, withdrawn)
+                        month_withdrawal_sources[account_name] = month_withdrawal_sources.get(account_name, 0.0) + withdrawn
+                deposited = max(0.0, balances.get(plan.rmds.destination_account, 0.0) - rmd_before.get(plan.rmds.destination_account, 0.0))
+                if deposited > 0:
+                    _add_contribution(year, plan.rmds.destination_account, deposited)
             month_withdrawals += rmd_withdrawn
             month_taxable_ordinary_income += rmd_ordinary_income
 
+        roth_accounts = {c.from_account for c in plan.roth_conversions} | {c.to_account for c in plan.roth_conversions}
+        roth_before = {name: balances.get(name, 0.0) for name in roth_accounts}
         roth_amount, roth_ordinary_income = execute_roth_conversions(
             conversions=plan.roth_conversions,
             balances=balances,
@@ -456,10 +534,23 @@ def run_deterministic(
             inflation_rate=inflation_rate,
             ytd_taxable_ordinary_income=annual.taxable_ordinary_income + month_taxable_ordinary_income,
         )
+        if roth_amount > 0:
+            for name in roth_accounts:
+                before = roth_before.get(name, 0.0)
+                after = balances.get(name, 0.0)
+                delta = after - before
+                if delta > 0:
+                    _add_contribution(year, name, delta)
+                elif delta < 0:
+                    _add_withdrawal(year, name, abs(delta))
         month_transfers += roth_amount
         month_taxable_ordinary_income += roth_ordinary_income
 
         if month == 12 and not plan.withdrawal_strategy.rmd_satisfied_first:
+            rmd_before = {
+                name: balances.get(name, 0.0)
+                for name in set(plan.rmds.accounts + [plan.rmds.destination_account])
+            }
             rmd_withdrawn, rmd_ordinary_income = execute_rmds(
                 settings=plan.rmds,
                 accounts_by_name=accounts_by_name,
@@ -467,6 +558,18 @@ def run_deterministic(
                 prior_year_end_balances=prior_year_end_balances,
                 owner_ages=owner_ages,
             )
+            if rmd_withdrawn > 0:
+                for account_name in plan.rmds.accounts:
+                    before = rmd_before.get(account_name, 0.0)
+                    after = balances.get(account_name, 0.0)
+                    withdrawn = max(0.0, before - after)
+                    if withdrawn > 0:
+                        _add_withdrawal(year, account_name, withdrawn)
+                        _add_withdrawal_source(year, account_name, withdrawn)
+                        month_withdrawal_sources[account_name] = month_withdrawal_sources.get(account_name, 0.0) + withdrawn
+                deposited = max(0.0, balances.get(plan.rmds.destination_account, 0.0) - rmd_before.get(plan.rmds.destination_account, 0.0))
+                if deposited > 0:
+                    _add_contribution(year, plan.rmds.destination_account, deposited)
             month_withdrawals += rmd_withdrawn
             month_taxable_ordinary_income += rmd_ordinary_income
 
@@ -481,6 +584,7 @@ def run_deterministic(
             rate = annual_to_monthly_rate(annual_growth_rate)
             growth = balances[account.name] * rate
             balances[account.name] += growth
+            _year_account_detail(year, account.name).growth += growth
             month_growth += growth
 
         # Step 12: Dividends.
@@ -490,6 +594,7 @@ def run_deterministic(
             if dividend <= 0:
                 continue
             month_dividends += dividend
+            _year_account_detail(year, account.name).dividends += dividend
             dividend_treatment = account.dividend_tax_treatment
             if dividend_treatment == "plan_settings":
                 dividend_treatment = plan.plan_settings.default_dividend_tax_treatment
@@ -499,10 +604,12 @@ def run_deterministic(
                 month_qualified_dividends += dividend
             if account.reinvest_dividends:
                 balances[account.name] += dividend
+                _add_contribution(year, account.name, dividend)
                 if account.type == "taxable_brokerage" and account.name in cost_basis:
                     cost_basis[account.name].add_basis(dividend)
             else:
                 balances[cash_account] += dividend
+                _add_contribution(year, cash_account, dividend)
 
         # Step 13: Fees.
         for account in plan.accounts:
@@ -511,6 +618,8 @@ def run_deterministic(
             if fee <= 0:
                 continue
             balances[account.name] -= fee
+            _year_account_detail(year, account.name).fees += fee
+            _add_withdrawal(year, account.name, fee)
             month_fees += fee
 
         # Step 14: Real asset updates.
@@ -553,14 +662,18 @@ def run_deterministic(
                     month_taxable_ordinary_income += gain
                 deposit = txn.deposit_to_account or cash_account
                 balances[deposit] += proceeds
+                _add_contribution(year, deposit, proceeds)
             elif txn.type == "buy_asset":
                 balances[cash_account] -= (txn.amount + txn.fees)
+                _add_withdrawal(year, cash_account, txn.amount + txn.fees)
             elif txn.type in {"transfer", "other"}:
                 net = txn.amount - txn.fees
                 if txn.deposit_to_account:
                     balances[txn.deposit_to_account] += net
+                    _add_contribution(year, txn.deposit_to_account, net)
                 else:
                     balances[cash_account] += net
+                    _add_contribution(year, cash_account, net)
 
         # Step 16: Healthcare costs (including IRMAA surcharges when enabled).
         month_healthcare, _ = compute_monthly_healthcare_cost(
@@ -608,6 +721,10 @@ def run_deterministic(
             month_withdrawals += sum(e.amount for e in events)
             month_realized_cg += gains
             for event in events:
+                _add_withdrawal(year, event.account, event.amount)
+                _add_withdrawal_source(year, event.account, event.amount)
+                month_withdrawal_sources[event.account] = month_withdrawal_sources.get(event.account, 0.0) + event.amount
+                _add_contribution(year, cash_account, event.amount)
                 event_account = accounts_by_name[event.account]
                 if event_account.type in {"401k", "traditional_ira"}:
                     month_taxable_ordinary_income += event.amount
@@ -618,6 +735,7 @@ def run_deterministic(
 
         # Step 19: Expense payment from cash.
         balances[cash_account] -= total_expenses
+        _add_withdrawal(year, cash_account, total_expenses)
         if balances[cash_account] < 0:
             insolvent = True
 
@@ -694,6 +812,10 @@ def run_deterministic(
                 month_realized_cg += gains
                 annual.realized_capital_gains += gains
                 for event in events:
+                    _add_withdrawal(year, event.account, event.amount)
+                    _add_withdrawal_source(year, event.account, event.amount)
+                    month_withdrawal_sources[event.account] = month_withdrawal_sources.get(event.account, 0.0) + event.amount
+                    _add_contribution(year, cash_account, event.amount)
                     event_account = accounts_by_name[event.account]
                     if event_account.type in {"401k", "traditional_ira"}:
                         month_taxable_ordinary_income += event.amount
@@ -717,11 +839,13 @@ def run_deterministic(
 
             if settlement > 0:
                 balances[cash_account] -= settlement
+                _add_withdrawal(year, cash_account, settlement)
                 annual.tax_payment = settlement
                 month_tax_settlement = settlement
             else:
                 refund = abs(settlement)
                 balances[cash_account] += refund
+                _add_contribution(year, cash_account, refund)
                 annual.tax_refund = refund
                 month_tax_settlement = -refund
 
@@ -738,6 +862,8 @@ def run_deterministic(
             insolvent = True
         annual.net_worth_end = net_worth_end
         annual.insolvent = annual.insolvent or insolvent
+        for account_name in balances:
+            _year_account_detail(year, account_name).ending_balance = max(0.0, balances[account_name])
 
         month_result = MonthResult(
             year=year,
@@ -757,9 +883,21 @@ def run_deterministic(
             tax_settlement=month_tax_settlement,
             net_worth_end=net_worth_end,
             insolvent=insolvent,
+            account_balances_end={name: max(0.0, value) for name, value in balances.items()},
+            withdrawal_sources=month_withdrawal_sources,
         )
         monthly_results.append(month_result)
 
     annual_results = [annual_by_year[y] for y in sorted(annual_by_year)]
     insolvency_years = [row.year for row in annual_results if row.insolvent]
-    return EngineResult(monthly=monthly_results, annual=annual_results, insolvency_years=insolvency_years)
+    account_annual: dict[str, list[AccountAnnualDetail]] = {}
+    for year in sorted(account_annual_by_year):
+        for account_name, detail in account_annual_by_year[year].items():
+            account_annual.setdefault(account_name, []).append(detail)
+    return EngineResult(
+        monthly=monthly_results,
+        annual=annual_results,
+        insolvency_years=insolvency_years,
+        account_annual=account_annual,
+        withdrawal_sources_by_year=withdrawal_sources_by_year,
+    )

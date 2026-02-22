@@ -1,49 +1,10 @@
-Blank-slate next steps (remaining work only)
+Remaining work
 
-1. Immediate next target
-
-Implement the full Phase 6 HTML/report stack from `PLAN.md`.
-
-- Add `charts.py`, `sankey.py`, and `templates.py` and wire them from `report.py`.
-- Replace scaffold HTML with self-contained interactive report (inline CSS/JS, no external dependencies).
-- Implement required charts:
-  - net worth stacked area,
-  - income vs expenses,
-  - account balances,
-  - tax burden stack,
-  - allocation over time,
-  - withdrawal sources,
-  - success probability (MC/historical).
-- Implement money-flow Sankey with year slider.
-- Implement required tables:
-  - annual summary,
-  - money flow,
-  - per-account detail.
-- Add dashboard/tabs layout and insolvency highlighting.
-- Include report metadata (mode, seed, timestamp, plan hash).
-
-2. Verification/test expansion
-
-Add missing tests called out by PLAN.md.
-
-- Golden tests (`tests/test_golden.py`) for stable normalized annual outputs.
-- Boundary interaction tests (SS start month, Medicare transition, RMD start year, mortgage payoff month).
-- Integration tests for:
-  - MC reproducibility with fixed seed,
-- insolvency path/report visibility,
-- generated HTML basic structure/parse checks.
-
-3. Optional hardening after above
+1. Optional hardening
 
 - Extend numeric range validation coverage to all remaining percent/rate fields not yet bounded.
-- Audit any remaining TODO/FIXME comments once report work lands.
-
-Execution order recommendation:
-1) Report/charts/sankey/tables implementation
-2) Golden + integration test suite
-3) Final validation hardening pass
+- Audit any remaining TODO/FIXME comments.
 
 Notes:
 - Keep JSON-path-specific validation error quality.
 - Preserve documented simplifications unless intentionally upgraded with tests.
-- Run `python3 -m pytest -q` before each commit.
