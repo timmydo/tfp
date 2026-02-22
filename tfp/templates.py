@@ -1,0 +1,1 @@
+"""HTML template assets (placeholder)."""

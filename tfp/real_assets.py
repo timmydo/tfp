@@ -1,0 +1,1 @@
+"""Real asset modeling (placeholder)."""
