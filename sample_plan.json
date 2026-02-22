@@ -1,0 +1,415 @@
+{
+  "people": {
+    "primary": {
+      "name": "Alex Carter",
+      "birthday": "1981-04",
+      "state": "CA"
+    },
+    "spouse": {
+      "name": "Jamie Carter",
+      "birthday": "1983-09"
+    }
+  },
+  "filing_status": "married_filing_jointly",
+  "accounts": [
+    {
+      "name": "Joint Checking",
+      "type": "cash",
+      "owner": "primary",
+      "balance": 45000,
+      "cost_basis": null,
+      "growth_rate": 0.01,
+      "dividend_yield": 0.0,
+      "dividend_tax_treatment": "tax_free",
+      "reinvest_dividends": false,
+      "bond_allocation_percent": 100,
+      "yearly_fees": 0.0,
+      "allow_withdrawals": true
+    },
+    {
+      "name": "Vanguard Taxable",
+      "type": "taxable_brokerage",
+      "owner": "primary",
+      "balance": 220000,
+      "cost_basis": 170000,
+      "growth_rate": 0.07,
+      "dividend_yield": 0.015,
+      "dividend_tax_treatment": "capital_gains",
+      "reinvest_dividends": true,
+      "bond_allocation_percent": 20,
+      "yearly_fees": 0.0005,
+      "allow_withdrawals": true
+    },
+    {
+      "name": "Alex 401k",
+      "type": "401k",
+      "owner": "primary",
+      "balance": 480000,
+      "cost_basis": null,
+      "growth_rate": 0.07,
+      "dividend_yield": 0.02,
+      "dividend_tax_treatment": "plan_settings",
+      "reinvest_dividends": true,
+      "bond_allocation_percent": 25,
+      "yearly_fees": 0.001,
+      "allow_withdrawals": true
+    },
+    {
+      "name": "Jamie Traditional IRA",
+      "type": "traditional_ira",
+      "owner": "spouse",
+      "balance": 180000,
+      "cost_basis": null,
+      "growth_rate": 0.065,
+      "dividend_yield": 0.02,
+      "dividend_tax_treatment": "plan_settings",
+      "reinvest_dividends": true,
+      "bond_allocation_percent": 30,
+      "yearly_fees": 0.0008,
+      "allow_withdrawals": true
+    },
+    {
+      "name": "Alex Roth IRA",
+      "type": "roth_ira",
+      "owner": "primary",
+      "balance": 90000,
+      "cost_basis": null,
+      "growth_rate": 0.07,
+      "dividend_yield": 0.015,
+      "dividend_tax_treatment": "tax_free",
+      "reinvest_dividends": true,
+      "bond_allocation_percent": 15,
+      "yearly_fees": 0.0005,
+      "allow_withdrawals": true
+    },
+    {
+      "name": "Family HSA",
+      "type": "hsa",
+      "owner": "primary",
+      "balance": 38000,
+      "cost_basis": null,
+      "growth_rate": 0.06,
+      "dividend_yield": 0.01,
+      "dividend_tax_treatment": "tax_free",
+      "reinvest_dividends": true,
+      "bond_allocation_percent": 10,
+      "yearly_fees": 0.0004,
+      "allow_withdrawals": true
+    }
+  ],
+  "contributions": [
+    {
+      "name": "Alex 401k payroll contribution",
+      "source_account": "income",
+      "destination_account": "Alex 401k",
+      "amount": 23000,
+      "frequency": "annual",
+      "start_date": "start",
+      "end_date": "2035-12",
+      "change_over_time": "match_inflation",
+      "change_rate": null,
+      "employer_match": {
+        "match_percent": 0.5,
+        "up_to_percent_of_salary": 0.06,
+        "salary_reference": "Alex Salary"
+      }
+    },
+    {
+      "name": "Backdoor Roth funding",
+      "source_account": "Joint Checking",
+      "destination_account": "Alex Roth IRA",
+      "amount": 7000,
+      "frequency": "annual",
+      "start_date": "start",
+      "end_date": "2040-12",
+      "change_over_time": "match_inflation",
+      "change_rate": null,
+      "employer_match": null
+    }
+  ],
+  "income": [
+    {
+      "name": "Alex Salary",
+      "owner": "primary",
+      "amount": 175000,
+      "frequency": "annual",
+      "start_date": "start",
+      "end_date": "2038-06",
+      "change_over_time": "inflation_plus",
+      "change_rate": 0.01,
+      "tax_handling": "withhold",
+      "withhold_percent": 0.24
+    },
+    {
+      "name": "Jamie Salary",
+      "owner": "spouse",
+      "amount": 125000,
+      "frequency": "annual",
+      "start_date": "start",
+      "end_date": "2036-12",
+      "change_over_time": "match_inflation",
+      "change_rate": null,
+      "tax_handling": "withhold",
+      "withhold_percent": 0.22
+    },
+    {
+      "name": "Consulting Project",
+      "owner": "primary",
+      "amount": 30000,
+      "frequency": "one_time",
+      "start_date": "2028-03",
+      "end_date": "2028-03",
+      "change_over_time": "fixed",
+      "change_rate": null,
+      "tax_handling": "withhold",
+      "withhold_percent": 0.25
+    }
+  ],
+  "expenses": [
+    {
+      "name": "Core living",
+      "owner": "joint",
+      "amount": 9000,
+      "frequency": "monthly",
+      "start_date": "start",
+      "end_date": "end",
+      "change_over_time": "match_inflation",
+      "change_rate": null,
+      "spending_type": "essential"
+    },
+    {
+      "name": "Travel",
+      "owner": "joint",
+      "amount": 12000,
+      "frequency": "annual",
+      "start_date": "start",
+      "end_date": "end",
+      "change_over_time": "match_inflation",
+      "change_rate": null,
+      "spending_type": "discretionary"
+    },
+    {
+      "name": "College gift",
+      "owner": "joint",
+      "amount": 25000,
+      "frequency": "one_time",
+      "start_date": "2032-06",
+      "end_date": "2032-06",
+      "change_over_time": "fixed",
+      "change_rate": null,
+      "spending_type": "discretionary"
+    }
+  ],
+  "social_security": [
+    {
+      "owner": "primary",
+      "pia_at_fra": 3400,
+      "fra_age_years": 67,
+      "fra_age_months": 0,
+      "claiming_age_years": 70,
+      "claiming_age_months": 0,
+      "cola_assumption": "match_inflation",
+      "cola_rate": null
+    },
+    {
+      "owner": "spouse",
+      "pia_at_fra": 2200,
+      "fra_age_years": 67,
+      "fra_age_months": 0,
+      "claiming_age_years": 68,
+      "claiming_age_months": 0,
+      "cola_assumption": "match_inflation",
+      "cola_rate": null
+    }
+  ],
+  "healthcare": {
+    "pre_medicare": [
+      {
+        "owner": "primary",
+        "monthly_premium": 850,
+        "annual_out_of_pocket": 3000,
+        "start_date": "start",
+        "end_date": null,
+        "change_over_time": "inflation_plus",
+        "change_rate": 0.02
+      },
+      {
+        "owner": "spouse",
+        "monthly_premium": 750,
+        "annual_out_of_pocket": 2500,
+        "start_date": "start",
+        "end_date": null,
+        "change_over_time": "inflation_plus",
+        "change_rate": 0.02
+      }
+    ],
+    "post_medicare": [
+      {
+        "owner": "primary",
+        "medicare_start_date": null,
+        "part_b_monthly_premium": 190,
+        "supplement_monthly_premium": 240,
+        "part_d_monthly_premium": 45,
+        "annual_out_of_pocket": 2400,
+        "change_over_time": "inflation_plus",
+        "change_rate": 0.02
+      },
+      {
+        "owner": "spouse",
+        "medicare_start_date": null,
+        "part_b_monthly_premium": 190,
+        "supplement_monthly_premium": 240,
+        "part_d_monthly_premium": 45,
+        "annual_out_of_pocket": 2400,
+        "change_over_time": "inflation_plus",
+        "change_rate": 0.02
+      }
+    ],
+    "irmaa": {
+      "enabled": true,
+      "lookback_years": 2
+    }
+  },
+  "real_assets": [
+    {
+      "name": "Primary Home",
+      "current_value": 900000,
+      "purchase_price": 540000,
+      "primary_residence": true,
+      "change_over_time": "match_inflation",
+      "change_rate": null,
+      "property_tax_rate": 0.012,
+      "mortgage": {
+        "payment": 3400,
+        "remaining_balance": 410000,
+        "interest_rate": 0.036,
+        "end_date": "2044-11"
+      },
+      "maintenance_expenses": [
+        {
+          "name": "Home maintenance",
+          "amount": 8000,
+          "frequency": "annual"
+        }
+      ]
+    },
+    {
+      "name": "Rental Condo",
+      "current_value": 420000,
+      "purchase_price": 300000,
+      "primary_residence": false,
+      "change_over_time": "match_inflation",
+      "change_rate": null,
+      "property_tax_rate": 0.011,
+      "mortgage": null,
+      "maintenance_expenses": [
+        {
+          "name": "Condo maintenance",
+          "amount": 3000,
+          "frequency": "annual"
+        }
+      ]
+    }
+  ],
+  "transactions": [
+    {
+      "name": "Sell rental condo",
+      "date": "2031-06",
+      "type": "sell_asset",
+      "amount": 470000,
+      "fees": 25000,
+      "tax_treatment": "capital_gains",
+      "linked_asset": "Rental Condo",
+      "deposit_to_account": "Joint Checking"
+    }
+  ],
+  "transfers": [
+    {
+      "name": "Annual cash buffer refill",
+      "from_account": "Vanguard Taxable",
+      "to_account": "Joint Checking",
+      "amount": 10000,
+      "frequency": "annual",
+      "start_date": "2029-01",
+      "end_date": "2038-12",
+      "tax_treatment": "capital_gains"
+    }
+  ],
+  "withdrawal_strategy": {
+    "order": [
+      "cash",
+      "taxable_brokerage",
+      "traditional_ira",
+      "401k",
+      "roth_ira",
+      "hsa"
+    ],
+    "account_specific_order": [
+      "Joint Checking",
+      "Vanguard Taxable",
+      "Jamie Traditional IRA",
+      "Alex 401k",
+      "Alex Roth IRA",
+      "Family HSA"
+    ],
+    "use_account_specific": true,
+    "rmd_satisfied_first": true
+  },
+  "roth_conversions": [
+    {
+      "name": "Retirement bridge conversion",
+      "from_account": "Jamie Traditional IRA",
+      "to_account": "Alex Roth IRA",
+      "annual_amount": 45000,
+      "start_date": "2039-01",
+      "end_date": "2046-12",
+      "fill_to_bracket": null
+    }
+  ],
+  "rmds": {
+    "enabled": true,
+    "rmd_start_age": 73,
+    "accounts": [
+      "Alex 401k",
+      "Jamie Traditional IRA"
+    ],
+    "destination_account": "Joint Checking"
+  },
+  "tax_settings": {
+    "use_current_brackets": true,
+    "bracket_year": 2026,
+    "federal_effective_rate_override": null,
+    "state_effective_rate_override": null,
+    "capital_gains_rate_override": null,
+    "standard_deduction_override": null,
+    "itemized_deductions": {
+      "salt_cap": 10000,
+      "mortgage_interest_deductible": true,
+      "charitable_contributions": 5000
+    },
+    "niit_enabled": true,
+    "amt_enabled": true
+  },
+  "plan_settings": {
+    "plan_start": "2026-01",
+    "plan_end": "2065-12",
+    "inflation_rate": 0.03,
+    "default_dividend_tax_treatment": "capital_gains"
+  },
+  "simulation_settings": {
+    "mode": "monte_carlo",
+    "monte_carlo": {
+      "num_simulations": 1000,
+      "stock_mean_return": 0.1,
+      "stock_std_dev": 0.18,
+      "bond_mean_return": 0.04,
+      "bond_std_dev": 0.06,
+      "correlation": 0.2
+    },
+    "historical": {
+      "start_year": 1926,
+      "end_year": 2024,
+      "use_rolling_periods": true
+    }
+  }
+}
