@@ -30,6 +30,8 @@ def render_report(plan: Plan, result: SimulationResult, plan_path: str) -> str:
         {
             "mode": result.mode,
             "seed": result.seed,
+            "scenario_count": result.scenario_count,
+            "success_rate": result.success_rate,
             "insolvency_years": result.insolvency_years,
             "annual": [asdict(row) for row in result.annual],
         }

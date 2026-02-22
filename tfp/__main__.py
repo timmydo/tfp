@@ -59,6 +59,8 @@ def main(argv: list[str] | None = None) -> int:
         last = result.annual[-1]
         print(f"Mode: {result.mode}")
         print(f"Years: {first.year}-{last.year}")
+        if result.success_rate is not None:
+            print(f"Success rate: {result.success_rate:.1%} ({result.scenario_count} scenarios)")
         print(f"Ending net worth: ${last.net_worth_end:,.0f}")
         print(f"Insolvency years: {len(result.insolvency_years)}")
 

@@ -25,7 +25,7 @@ def test_missing_plan_file_returns_two(tmp_path):
 def test_summary_mode_writes_output(tmp_path, sample_plan_dict):
     plan_path = write_plan(tmp_path, sample_plan_dict)
     output_path = tmp_path / "out.html"
-    code = main([str(plan_path), "--summary", "-o", str(output_path)])
+    code = main([str(plan_path), "--summary", "--mode", "deterministic", "-o", str(output_path)])
 
     assert code == 0
     assert output_path.exists()

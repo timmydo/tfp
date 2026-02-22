@@ -256,7 +256,10 @@ def _active_expense_items(
     return out
 
 
-def run_deterministic(plan: Plan) -> EngineResult:
+def run_deterministic(
+    plan: Plan,
+    annual_return_overrides: dict[int, tuple[float, float]] | None = None,
+) -> EngineResult:
     plan_start = plan.plan_settings.plan_start
     plan_end = plan.plan_settings.plan_end
     inflation_rate = plan.plan_settings.inflation_rate
@@ -467,7 +470,13 @@ def run_deterministic(plan: Plan) -> EngineResult:
 
         # Step 11: Account growth.
         for account in plan.accounts:
-            rate = annual_to_monthly_rate(account.growth_rate)
+            annual_growth_rate = account.growth_rate
+            if annual_return_overrides and year in annual_return_overrides:
+                stock_return, bond_return = annual_return_overrides[year]
+                bond_weight = max(0.0, min(100.0, account.bond_allocation_percent)) / 100.0
+                stock_weight = 1.0 - bond_weight
+                annual_growth_rate = (stock_return * stock_weight) + (bond_return * bond_weight)
+            rate = annual_to_monthly_rate(annual_growth_rate)
             growth = balances[account.name] * rate
             balances[account.name] += growth
             month_growth += growth
@@ -627,28 +636,74 @@ def run_deterministic(plan: Plan) -> EngineResult:
         annual.qualified_dividends += month_qualified_dividends
 
         if month == 12:
-            itemized = min(plan.tax_settings.itemized_deductions.salt_cap, max(0.0, annual.tax_state))
-            itemized += max(0.0, plan.tax_settings.itemized_deductions.charitable_contributions)
-            if plan.tax_settings.itemized_deductions.mortgage_interest_deductible:
-                # Use a fixed share of real-asset expenses as a simple mortgage-interest proxy.
-                itemized += max(0.0, annual.real_asset_expenses * 0.30)
+            annual.tax_refund = 0.0
+            annual.tax_payment = 0.0
+            estimated_state_tax = max(0.0, annual.tax_state)
+            settlement = 0.0
+            tax_result = None
 
-            tax_result = compute_total_tax(
-                YearIncomeSummary(
-                    year=year,
-                    filing_status=plan.filing_status,
-                    state=plan.people.primary.state or "CA",
-                    ordinary_income=annual.taxable_ordinary_income,
-                    capital_gains=annual.realized_capital_gains,
-                    qualified_dividends=annual.qualified_dividends,
-                    investment_income=0.0,
-                    itemized_deductions=itemized,
-                    withheld_tax=annual.tax_withheld,
-                    early_withdrawal_penalty=early_withdrawal_penalties[year],
-                ),
-                plan.tax_settings,
-                inflation_rate=inflation_rate,
-            )
+            # Additional tax-payment withdrawals can increase taxable income.
+            # Recompute tax until settlement stabilizes or no more withdrawals are possible.
+            for _ in range(8):
+                itemized = min(plan.tax_settings.itemized_deductions.salt_cap, estimated_state_tax)
+                itemized += max(0.0, plan.tax_settings.itemized_deductions.charitable_contributions)
+                if plan.tax_settings.itemized_deductions.mortgage_interest_deductible:
+                    # Use a fixed share of real-asset expenses as a simple mortgage-interest proxy.
+                    itemized += max(0.0, annual.real_asset_expenses * 0.30)
+
+                tax_result = compute_total_tax(
+                    YearIncomeSummary(
+                        year=year,
+                        filing_status=plan.filing_status,
+                        state=plan.people.primary.state or "CA",
+                        ordinary_income=annual.taxable_ordinary_income,
+                        capital_gains=annual.realized_capital_gains,
+                        qualified_dividends=annual.qualified_dividends,
+                        investment_income=0.0,
+                        itemized_deductions=itemized,
+                        withheld_tax=annual.tax_withheld,
+                        early_withdrawal_penalty=early_withdrawal_penalties[year],
+                    ),
+                    plan.tax_settings,
+                    inflation_rate=inflation_rate,
+                )
+                estimated_state_tax = max(0.0, tax_result.state_income_tax)
+                settlement = tax_result.total_tax - annual.tax_withheld
+                if settlement <= 0 or balances[cash_account] >= settlement:
+                    break
+
+                remaining, events, gains = cover_shortfall(
+                    shortfall=settlement - balances[cash_account],
+                    balances=balances,
+                    accounts=accounts_by_name,
+                    strategy=plan.withdrawal_strategy,
+                    cash_account_name=cash_account,
+                    cost_basis=cost_basis,
+                )
+                extra_withdrawals = sum(e.amount for e in events)
+                if extra_withdrawals <= 0:
+                    if remaining > 0:
+                        insolvent = True
+                    break
+
+                month_withdrawals += extra_withdrawals
+                annual.withdrawals += extra_withdrawals
+                month_realized_cg += gains
+                annual.realized_capital_gains += gains
+                for event in events:
+                    event_account = accounts_by_name[event.account]
+                    if event_account.type in {"401k", "traditional_ira"}:
+                        month_taxable_ordinary_income += event.amount
+                        annual.taxable_ordinary_income += event.amount
+                        if owner_ages.get(event_account.owner, 0.0) < 59.5:
+                            early_withdrawal_penalties[year] += event.amount * 0.10
+                if remaining > 0:
+                    insolvent = True
+                    break
+
+            if tax_result is None:
+                raise RuntimeError("tax_result not computed for year-end settlement")
+
             annual.tax_federal = tax_result.federal_income_tax
             annual.tax_capital_gains = tax_result.capital_gains_tax
             annual.tax_state = tax_result.state_income_tax
@@ -657,31 +712,7 @@ def run_deterministic(plan: Plan) -> EngineResult:
             annual.tax_penalties = tax_result.early_withdrawal_penalty
             annual.tax_total = tax_result.total_tax
 
-            settlement = tax_result.total_tax - annual.tax_withheld
             if settlement > 0:
-                if balances[cash_account] < settlement:
-                    remaining, events, gains = cover_shortfall(
-                        shortfall=settlement - balances[cash_account],
-                        balances=balances,
-                        accounts=accounts_by_name,
-                        strategy=plan.withdrawal_strategy,
-                        cash_account_name=cash_account,
-                        cost_basis=cost_basis,
-                    )
-                    extra_withdrawals = sum(e.amount for e in events)
-                    month_withdrawals += extra_withdrawals
-                    annual.withdrawals += extra_withdrawals
-                    month_realized_cg += gains
-                    annual.realized_capital_gains += gains
-                    for event in events:
-                        event_account = accounts_by_name[event.account]
-                        if event_account.type in {"401k", "traditional_ira"}:
-                            month_taxable_ordinary_income += event.amount
-                            annual.taxable_ordinary_income += event.amount
-                            if owner_ages.get(event_account.owner, 0.0) < 59.5:
-                                early_withdrawal_penalties[year] += event.amount * 0.10
-                    if remaining > 0:
-                        insolvent = True
                 balances[cash_account] -= settlement
                 annual.tax_payment = settlement
                 month_tax_settlement = settlement
