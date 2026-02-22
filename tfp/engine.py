@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from .cost_basis import CostBasisTracker
+from .healthcare import compute_monthly_healthcare_cost
 from .real_assets import (
     RealAssetState,
     annual_to_monthly_rate,
@@ -14,7 +15,10 @@ from .real_assets import (
     property_tax_monthly,
     appreciate_asset,
 )
+from .rmd import execute_rmds
+from .roth import execute_roth_conversions
 from .schema import Account, Expense, Income, Plan
+from .social_security import monthly_social_security_income
 from .tax import YearIncomeSummary, compute_total_tax
 from .withdrawals import cover_shortfall
 
@@ -274,6 +278,9 @@ def run_deterministic(plan: Plan) -> EngineResult:
     annual_by_year: dict[int, AnnualResult] = {}
 
     months = _iter_months(plan_start, plan_end)
+    prior_year_end_balances = {name: balance for name, balance in balances.items()}
+    irmaa_magi_history: dict[int, float] = {}
+    early_withdrawal_penalties: dict[int, float] = {}
 
     for year, month, current_index in months:
         annual = annual_by_year.setdefault(year, AnnualResult(year=year))
@@ -298,6 +305,7 @@ def run_deterministic(plan: Plan) -> EngineResult:
         month_taxable_ordinary_income = 0.0
         month_qualified_dividends = 0.0
         insolvent = False
+        early_withdrawal_penalties.setdefault(year, 0.0)
 
         # Step 2/4: Income collection and withholding.
         income_by_name: dict[str, float] = {}
@@ -325,6 +333,17 @@ def run_deterministic(plan: Plan) -> EngineResult:
                 withheld = amount * income.withhold_percent
                 balances[cash_account] -= withheld
                 month_withheld += withheld
+
+        ss_income, _ = monthly_social_security_income(
+            entries=plan.social_security,
+            owner_ages=owner_ages,
+            inflation_rate=inflation_rate,
+        )
+        if ss_income > 0:
+            balances[cash_account] += ss_income
+            month_income += ss_income
+            # v1 simplification: estimate 85% of SS benefits as taxable.
+            month_taxable_ordinary_income += ss_income * 0.85
 
         # Step 5-7: Contributions and employer match.
         for contribution in plan.contributions:
@@ -402,7 +421,43 @@ def run_deterministic(plan: Plan) -> EngineResult:
             if to_account.type == "taxable_brokerage" and transfer.to_account in cost_basis:
                 cost_basis[transfer.to_account].add_basis(amount)
 
-        # Steps 9-10 are Phase 4 (roth/rmd); reserved.
+        # Steps 9-10: Roth conversions and RMD processing.
+        if month == 12 and plan.withdrawal_strategy.rmd_satisfied_first:
+            rmd_withdrawn, rmd_ordinary_income = execute_rmds(
+                settings=plan.rmds,
+                accounts_by_name=accounts_by_name,
+                balances=balances,
+                prior_year_end_balances=prior_year_end_balances,
+                owner_ages=owner_ages,
+            )
+            month_withdrawals += rmd_withdrawn
+            month_taxable_ordinary_income += rmd_ordinary_income
+
+        roth_amount, roth_ordinary_income = execute_roth_conversions(
+            conversions=plan.roth_conversions,
+            balances=balances,
+            current_year=year,
+            current_month=month,
+            current_index=current_index,
+            plan_start=plan_start,
+            plan_end=plan_end,
+            filing_status=plan.filing_status,
+            inflation_rate=inflation_rate,
+            ytd_taxable_ordinary_income=annual.taxable_ordinary_income + month_taxable_ordinary_income,
+        )
+        month_transfers += roth_amount
+        month_taxable_ordinary_income += roth_ordinary_income
+
+        if month == 12 and not plan.withdrawal_strategy.rmd_satisfied_first:
+            rmd_withdrawn, rmd_ordinary_income = execute_rmds(
+                settings=plan.rmds,
+                accounts_by_name=accounts_by_name,
+                balances=balances,
+                prior_year_end_balances=prior_year_end_balances,
+                owner_ages=owner_ages,
+            )
+            month_withdrawals += rmd_withdrawn
+            month_taxable_ordinary_income += rmd_ordinary_income
 
         # Step 11: Account growth.
         for account in plan.accounts:
@@ -485,45 +540,18 @@ def run_deterministic(plan: Plan) -> EngineResult:
                 else:
                     balances[cash_account] += net
 
-        # Step 16: Healthcare costs.
-        for item in plan.healthcare.pre_medicare:
-            start = item.start_date or "start"
-            end = item.end_date or "end"
-            if not _is_active(start, end, current_index, plan_start, plan_end):
-                continue
-            if owner_ages[item.owner] >= 65:
-                continue
-            factor = _amount_for_month(
-                amount=1.0,
-                change_over_time=item.change_over_time,
-                change_rate=item.change_rate,
-                inflation_rate=inflation_rate,
-                current_year=year,
-                plan_start=plan_start,
-            )
-            month_healthcare += (item.monthly_premium + item.annual_out_of_pocket / 12.0) * factor
-
-        for item in plan.healthcare.post_medicare:
-            start = item.medicare_start_date or "start"
-            if not _is_active(start, "end", current_index, plan_start, plan_end):
-                continue
-            if owner_ages[item.owner] < 65:
-                continue
-            factor = _amount_for_month(
-                amount=1.0,
-                change_over_time=item.change_over_time,
-                change_rate=item.change_rate,
-                inflation_rate=inflation_rate,
-                current_year=year,
-                plan_start=plan_start,
-            )
-            monthly = (
-                item.part_b_monthly_premium
-                + item.supplement_monthly_premium
-                + item.part_d_monthly_premium
-                + item.annual_out_of_pocket / 12.0
-            )
-            month_healthcare += monthly * factor
+        # Step 16: Healthcare costs (including IRMAA surcharges when enabled).
+        month_healthcare, _ = compute_monthly_healthcare_cost(
+            healthcare=plan.healthcare,
+            owner_ages=owner_ages,
+            current_year=year,
+            current_index=current_index,
+            plan_start=plan_start,
+            plan_end=plan_end,
+            inflation_rate=inflation_rate,
+            filing_status=plan.filing_status,
+            irmaa_magi_history=irmaa_magi_history,
+        )
 
         # Step 17: Non-healthcare expenses.
         for expense in _active_expense_items(
@@ -561,6 +589,8 @@ def run_deterministic(plan: Plan) -> EngineResult:
                 event_account = accounts_by_name[event.account]
                 if event_account.type in {"401k", "traditional_ira"}:
                     month_taxable_ordinary_income += event.amount
+                    if owner_ages.get(event_account.owner, 0.0) < 59.5:
+                        early_withdrawal_penalties[year] += event.amount * 0.10
             if remaining > 0:
                 insolvent = True
 
@@ -604,7 +634,7 @@ def run_deterministic(plan: Plan) -> EngineResult:
                     investment_income=annual.realized_capital_gains + annual.qualified_dividends,
                     itemized_deductions=itemized,
                     withheld_tax=annual.tax_withheld,
-                    early_withdrawal_penalty=0.0,
+                    early_withdrawal_penalty=early_withdrawal_penalties[year],
                 ),
                 plan.tax_settings,
                 inflation_rate=inflation_rate,
@@ -638,6 +668,8 @@ def run_deterministic(plan: Plan) -> EngineResult:
                         if event_account.type in {"401k", "traditional_ira"}:
                             month_taxable_ordinary_income += event.amount
                             annual.taxable_ordinary_income += event.amount
+                            if owner_ages.get(event_account.owner, 0.0) < 59.5:
+                                early_withdrawal_penalties[year] += event.amount * 0.10
                     if remaining > 0:
                         insolvent = True
                 balances[cash_account] -= settlement
@@ -648,6 +680,12 @@ def run_deterministic(plan: Plan) -> EngineResult:
                 balances[cash_account] += refund
                 annual.tax_refund = refund
                 month_tax_settlement = -refund
+
+            irmaa_magi_history[year] = max(
+                0.0,
+                annual.taxable_ordinary_income + annual.realized_capital_gains + annual.qualified_dividends,
+            )
+            prior_year_end_balances = {name: max(0.0, balance) for name, balance in balances.items()}
 
         net_worth_end = sum(max(0.0, bal) for bal in balances.values()) + sum(
             max(0.0, state.current_value) for state in real_asset_state.values()
