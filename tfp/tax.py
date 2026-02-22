@@ -15,7 +15,7 @@ from .tax_data import (
     FICA_RATES,
     NIIT_THRESHOLDS,
     STANDARD_DEDUCTIONS,
-    STATE_EFFECTIVE_RATES,
+    STATE_TAX_BRACKETS,
 )
 
 
@@ -199,11 +199,19 @@ def compute_state_tax(
     year: int,
     inflation_rate: float = DEFAULT_BRACKET_INFLATION,
 ) -> float:
-    _ = filing_status
-    rates = STATE_EFFECTIVE_RATES[BASE_TAX_YEAR]
-    rate = rates.get(state.upper(), 0.0)
-    _ = year, inflation_rate
-    return max(0.0, taxable_income) * rate
+    amount = max(0.0, taxable_income)
+    if amount <= 0:
+        return 0.0
+
+    state_by_year = STATE_TAX_BRACKETS.get(BASE_TAX_YEAR, {})
+    status = _normalize_filing_status(filing_status)
+    state_brackets = state_by_year.get(state.upper())
+    if state_brackets is None:
+        return 0.0
+    brackets = state_brackets.get(status) or state_brackets.get("single") or [(None, 0.0)]
+    factor = _year_factor(year, inflation_rate)
+    adjusted = [(None if upper is None else upper * factor, rate) for upper, rate in brackets]
+    return _progressive_tax(amount, adjusted)
 
 
 def compute_fica(

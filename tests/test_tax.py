@@ -6,6 +6,7 @@ from tfp.tax import (
     compute_fica,
     compute_capital_gains_tax,
     compute_federal_income_tax,
+    compute_state_tax,
     compute_total_tax,
 )
 
@@ -99,6 +100,18 @@ def test_fica_additional_medicare_uses_joint_threshold():
     single = compute_fica(300_000, 0, 2026, filing_status="single")
     mfj = compute_fica(300_000, 0, 2026, filing_status="married_filing_jointly")
     assert mfj < single
+
+
+def test_state_tax_uses_progressive_brackets():
+    low = compute_state_tax(50_000, "CA", "single", 2026)
+    high = compute_state_tax(250_000, "CA", "single", 2026)
+    assert high > low
+    assert (high / 250_000) > (low / 50_000)
+
+
+def test_state_tax_preserves_flat_tax_states():
+    tax = compute_state_tax(100_000, "PA", "single", 2026)
+    assert round(tax, 2) == 3070.00
 
 
 def test_invalid_filing_status_raises():
