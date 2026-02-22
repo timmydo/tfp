@@ -34,6 +34,7 @@ def render_report(plan: Plan, result: SimulationResult, plan_path: str) -> str:
             "success_rate": result.success_rate,
             "insolvency_years": result.insolvency_years,
             "annual": [asdict(row) for row in result.annual],
+            "net_worth_percentiles": [asdict(row) for row in (result.net_worth_percentiles or [])],
         }
     )
 

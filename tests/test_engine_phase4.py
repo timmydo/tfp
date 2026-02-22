@@ -199,3 +199,97 @@ def test_tax_settlement_recomputes_after_shortfall_withdrawals(tmp_path, sample_
     assert annual.taxable_ordinary_income > 60000
     # Extra settlement-funded IRA withdrawals should feed back into final tax.
     assert annual.tax_total > baseline_tax
+
+
+def test_itemized_mortgage_interest_uses_actual_interest_not_proxy(tmp_path, sample_plan_dict):
+    data = clone_plan(sample_plan_dict)
+    data["plan_settings"]["plan_start"] = "2026-12"
+    data["plan_settings"]["plan_end"] = "2026-12"
+    data["contributions"] = []
+    data["transfers"] = []
+    data["transactions"] = []
+    data["healthcare"]["pre_medicare"] = []
+    data["healthcare"]["post_medicare"] = []
+    data["social_security"] = []
+    data["roth_conversions"] = []
+    data["rmds"] = {
+        "enabled": False,
+        "rmd_start_age": 73,
+        "accounts": [],
+        "destination_account": "Cash",
+    }
+    data["tax_settings"]["itemized_deductions"] = {
+        "salt_cap": 0,
+        "mortgage_interest_deductible": True,
+        "charitable_contributions": 0,
+    }
+    data["income"] = [
+        {
+            "name": "Salary",
+            "owner": "primary",
+            "amount": 200000,
+            "frequency": "annual",
+            "start_date": "start",
+            "end_date": "end",
+            "change_over_time": "fixed",
+            "change_rate": None,
+            "tax_handling": "withhold",
+            "withhold_percent": 0.0,
+        }
+    ]
+    data["accounts"] = [
+        {
+            "name": "Cash",
+            "type": "cash",
+            "owner": "primary",
+            "balance": 1000000,
+            "cost_basis": None,
+            "growth_rate": 0.0,
+            "dividend_yield": 0.0,
+            "dividend_tax_treatment": "tax_free",
+            "reinvest_dividends": False,
+            "bond_allocation_percent": 100,
+            "yearly_fees": 0.0,
+            "allow_withdrawals": True,
+        }
+    ]
+    data["real_assets"] = [
+        {
+            "name": "No Mortgage Asset",
+            "current_value": 1_000_000,
+            "purchase_price": 1_000_000,
+            "primary_residence": False,
+            "change_over_time": "fixed",
+            "change_rate": None,
+            "property_tax_rate": 0.012,
+            "mortgage": None,
+            "maintenance_expenses": [
+                {"name": "Monthly upkeep", "amount": 10_000, "frequency": "monthly"},
+            ],
+        }
+    ]
+    data["expenses"] = []
+
+    path = write_plan(tmp_path, data)
+    plan = load_plan(path)
+    result = run_deterministic(plan)
+
+    annual = result.annual[0]
+    assert annual.real_asset_expenses > 0
+    assert annual.mortgage_interest_paid == 0
+
+    expected = compute_total_tax(
+        YearIncomeSummary(
+            year=2026,
+            filing_status=plan.filing_status,
+            state=plan.people.primary.state or "CA",
+            ordinary_income=annual.taxable_ordinary_income,
+            capital_gains=annual.realized_capital_gains,
+            qualified_dividends=annual.qualified_dividends,
+            itemized_deductions=0.0,
+            early_withdrawal_penalty=annual.tax_penalties,
+        ),
+        plan.tax_settings,
+        inflation_rate=plan.plan_settings.inflation_rate,
+    )
+    assert round(annual.tax_total, 2) == round(expected.total_tax, 2)

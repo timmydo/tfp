@@ -127,3 +127,60 @@ def test_invalid_filing_status_raises():
             ),
             settings,
         )
+
+
+def test_bracket_year_applies_when_not_using_current_brackets():
+    settings_current = _default_tax_settings()
+    settings_current.niit_enabled = False
+    settings_current.amt_enabled = False
+    settings_current.state_effective_rate_override = 0.0
+    settings_current.capital_gains_rate_override = 0.0
+
+    settings_alt = _default_tax_settings()
+    settings_alt.use_current_brackets = False
+    settings_alt.bracket_year = 2030
+    settings_alt.niit_enabled = False
+    settings_alt.amt_enabled = False
+    settings_alt.state_effective_rate_override = 0.0
+    settings_alt.capital_gains_rate_override = 0.0
+
+    summary = YearIncomeSummary(
+        year=2026,
+        filing_status="single",
+        state="CA",
+        ordinary_income=150_000,
+        capital_gains=0,
+    )
+    current_tax = compute_total_tax(summary, settings_current).total_tax
+    alt_tax = compute_total_tax(summary, settings_alt).total_tax
+
+    assert alt_tax > current_tax
+
+
+def test_bracket_year_ignored_when_use_current_brackets_enabled():
+    settings_default = _default_tax_settings()
+    settings_default.bracket_year = 2026
+    settings_default.niit_enabled = False
+    settings_default.amt_enabled = False
+    settings_default.state_effective_rate_override = 0.0
+    settings_default.capital_gains_rate_override = 0.0
+
+    settings_other_year = _default_tax_settings()
+    settings_other_year.bracket_year = 2040
+    settings_other_year.use_current_brackets = True
+    settings_other_year.niit_enabled = False
+    settings_other_year.amt_enabled = False
+    settings_other_year.state_effective_rate_override = 0.0
+    settings_other_year.capital_gains_rate_override = 0.0
+
+    summary = YearIncomeSummary(
+        year=2026,
+        filing_status="single",
+        state="CA",
+        ordinary_income=150_000,
+        capital_gains=0,
+    )
+
+    tax_default = compute_total_tax(summary, settings_default).total_tax
+    tax_other = compute_total_tax(summary, settings_other_year).total_tax
+    assert round(tax_default, 6) == round(tax_other, 6)

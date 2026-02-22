@@ -114,6 +114,23 @@ def _check_date_range(result: ValidationResult, start_path: str, start: str, end
         result.errors.append(f"{start_path}/{end_path}: start_date must be <= end_date")
 
 
+def _check_range(
+    result: ValidationResult,
+    path: str,
+    value: float | int | None,
+    *,
+    min_value: float | int | None = None,
+    max_value: float | int | None = None,
+) -> None:
+    if value is None:
+        return
+    numeric = float(value)
+    if min_value is not None and numeric < min_value:
+        result.errors.append(f"{path}: must be >= {min_value}")
+    if max_value is not None and numeric > max_value:
+        result.errors.append(f"{path}: must be <= {max_value}")
+
+
 def validate_plan(plan: Plan) -> ValidationResult:
     result = ValidationResult()
     spouse_exists = plan.people.spouse is not None
@@ -149,6 +166,8 @@ def validate_plan(plan: Plan) -> ValidationResult:
         _check_enum(result, f"{base}.type", account.type, ACCOUNT_TYPES)
         _check_owner(result, f"{base}.owner", account.owner, spouse_exists, allow_joint=False)
         _check_enum(result, f"{base}.dividend_tax_treatment", account.dividend_tax_treatment, DIVIDEND_TAX_TREATMENT)
+        _check_range(result, f"{base}.bond_allocation_percent", account.bond_allocation_percent, min_value=0, max_value=100)
+        _check_range(result, f"{base}.yearly_fees", account.yearly_fees, min_value=0)
         if account.type == "taxable_brokerage" and account.cost_basis is None:
             result.errors.append(f"{base}.cost_basis: required for taxable_brokerage accounts")
 
@@ -165,6 +184,14 @@ def validate_plan(plan: Plan) -> ValidationResult:
         _check_enum(result, f"{base}.change_over_time", item.change_over_time, CHANGE_OVER_TIME)
         if item.change_over_time in REQUIRES_CHANGE_RATE and item.change_rate is None:
             result.errors.append(f"{base}.change_rate: required when change_over_time is '{item.change_over_time}'")
+        _check_range(result, f"{base}.match_percent", item.employer_match.match_percent if item.employer_match else None, min_value=0, max_value=1)
+        _check_range(
+            result,
+            f"{base}.up_to_percent_of_salary",
+            item.employer_match.up_to_percent_of_salary if item.employer_match else None,
+            min_value=0,
+            max_value=1,
+        )
         _check_date(result, f"{base}.start_date", item.start_date)
         _check_date(result, f"{base}.end_date", item.end_date)
         _check_date_range(
@@ -189,6 +216,7 @@ def validate_plan(plan: Plan) -> ValidationResult:
         _check_enum(result, f"{base}.tax_handling", item.tax_handling, INCOME_TAX_HANDLING)
         if item.tax_handling == "withhold" and item.withhold_percent is None:
             result.errors.append(f"{base}.withhold_percent: required when tax_handling is 'withhold'")
+        _check_range(result, f"{base}.withhold_percent", item.withhold_percent, min_value=0, max_value=1)
         if item.change_over_time in REQUIRES_CHANGE_RATE and item.change_rate is None:
             result.errors.append(f"{base}.change_rate: required when change_over_time is '{item.change_over_time}'")
         _check_date(result, f"{base}.start_date", item.start_date)
@@ -227,6 +255,8 @@ def validate_plan(plan: Plan) -> ValidationResult:
         base = f"social_security[{idx}]"
         _check_owner(result, f"{base}.owner", item.owner, spouse_exists, allow_joint=False)
         _check_enum(result, f"{base}.cola_assumption", item.cola_assumption, COLA_ASSUMPTION)
+        _check_range(result, f"{base}.fra_age_months", item.fra_age_months, min_value=0, max_value=11)
+        _check_range(result, f"{base}.claiming_age_months", item.claiming_age_months, min_value=0, max_value=11)
         if item.cola_assumption in {"inflation_plus", "inflation_minus"} and item.cola_rate is None:
             result.errors.append(f"{base}.cola_rate: required when cola_assumption is '{item.cola_assumption}'")
 
@@ -335,6 +365,32 @@ def validate_plan(plan: Plan) -> ValidationResult:
             _check_enum(result, f"withdrawal_strategy.order[{idx}]", kind, ACCOUNT_TYPES)
 
     _check_enum(result, "simulation_settings.mode", plan.simulation_settings.mode, SIM_MODES)
+    _check_range(
+        result,
+        "simulation_settings.monte_carlo.correlation",
+        plan.simulation_settings.monte_carlo.correlation,
+        min_value=-1,
+        max_value=1,
+    )
+    _check_range(
+        result,
+        "simulation_settings.monte_carlo.num_simulations",
+        plan.simulation_settings.monte_carlo.num_simulations,
+        min_value=1,
+    )
+    _check_range(
+        result,
+        "simulation_settings.monte_carlo.stock_std_dev",
+        plan.simulation_settings.monte_carlo.stock_std_dev,
+        min_value=0,
+    )
+    _check_range(
+        result,
+        "simulation_settings.monte_carlo.bond_std_dev",
+        plan.simulation_settings.monte_carlo.bond_std_dev,
+        min_value=0,
+    )
+    _check_range(result, "healthcare.irmaa.lookback_years", plan.healthcare.irmaa.lookback_years, min_value=1)
 
     if plan.rmds.enabled:
         for idx, name in enumerate(plan.rmds.accounts):

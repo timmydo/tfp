@@ -47,7 +47,7 @@ class TaxResult:
 
 
 def _year_factor(year: int, inflation_rate: float) -> float:
-    delta = max(0, year - BASE_TAX_YEAR)
+    delta = year - BASE_TAX_YEAR
     return (1.0 + inflation_rate) ** delta
 
 
@@ -57,10 +57,10 @@ def _normalize_filing_status(filing_status: str) -> str:
     raise ValueError(f"unsupported filing_status: {filing_status}")
 
 
-def _adjusted_standard_deduction(filing_status: str, year: int, inflation_rate: float) -> float:
+def _adjusted_standard_deduction(filing_status: str, year: int, inflation_rate: float, base_year: int = BASE_TAX_YEAR) -> float:
     fs = _normalize_filing_status(filing_status)
     base = STANDARD_DEDUCTIONS[BASE_TAX_YEAR][fs]
-    return base * _year_factor(year, inflation_rate)
+    return base * _year_factor(year - base_year + BASE_TAX_YEAR, inflation_rate)
 
 
 def _adjusted_brackets(
@@ -68,10 +68,11 @@ def _adjusted_brackets(
     filing_status: str,
     year: int,
     inflation_rate: float,
+    base_year: int = BASE_TAX_YEAR,
 ) -> list[tuple[float | None, float]]:
     fs = _normalize_filing_status(filing_status)
     base = brackets_by_year[BASE_TAX_YEAR][fs]
-    factor = _year_factor(year, inflation_rate)
+    factor = _year_factor(year - base_year + BASE_TAX_YEAR, inflation_rate)
     return [(None if upper is None else upper * factor, rate) for upper, rate in base]
 
 
@@ -98,8 +99,14 @@ def _progressive_tax(amount: float, brackets: list[tuple[float | None, float]]) 
     return max(0.0, tax)
 
 
-def compute_federal_income_tax(taxable_income: float, filing_status: str, year: int, inflation_rate: float = DEFAULT_BRACKET_INFLATION) -> float:
-    brackets = _adjusted_brackets(FEDERAL_BRACKETS, filing_status, year, inflation_rate)
+def compute_federal_income_tax(
+    taxable_income: float,
+    filing_status: str,
+    year: int,
+    inflation_rate: float = DEFAULT_BRACKET_INFLATION,
+    base_year: int = BASE_TAX_YEAR,
+) -> float:
+    brackets = _adjusted_brackets(FEDERAL_BRACKETS, filing_status, year, inflation_rate, base_year=base_year)
     return _progressive_tax(taxable_income, brackets)
 
 
@@ -108,8 +115,9 @@ def _capital_gains_zero_bracket_room(
     filing_status: str,
     year: int,
     inflation_rate: float,
+    base_year: int = BASE_TAX_YEAR,
 ) -> float:
-    brackets = _adjusted_brackets(CAPITAL_GAINS_BRACKETS, filing_status, year, inflation_rate)
+    brackets = _adjusted_brackets(CAPITAL_GAINS_BRACKETS, filing_status, year, inflation_rate, base_year=base_year)
     zero_cap = brackets[0][0] or 0.0
     return max(0.0, zero_cap - max(0.0, ordinary_taxable_income))
 
@@ -120,15 +128,22 @@ def compute_capital_gains_tax(
     filing_status: str,
     year: int,
     inflation_rate: float = DEFAULT_BRACKET_INFLATION,
+    base_year: int = BASE_TAX_YEAR,
 ) -> float:
     if gains <= 0:
         return 0.0
 
-    brackets = _adjusted_brackets(CAPITAL_GAINS_BRACKETS, filing_status, year, inflation_rate)
+    brackets = _adjusted_brackets(CAPITAL_GAINS_BRACKETS, filing_status, year, inflation_rate, base_year=base_year)
     remaining_gains = gains
     tax = 0.0
 
-    zero_room = _capital_gains_zero_bracket_room(other_taxable_income, filing_status, year, inflation_rate)
+    zero_room = _capital_gains_zero_bracket_room(
+        other_taxable_income,
+        filing_status,
+        year,
+        inflation_rate,
+        base_year=base_year,
+    )
     zero_bucket = min(remaining_gains, zero_room)
     remaining_gains -= zero_bucket
 
@@ -160,12 +175,13 @@ def compute_niit(
     filing_status: str,
     year: int,
     inflation_rate: float = DEFAULT_BRACKET_INFLATION,
+    base_year: int = BASE_TAX_YEAR,
 ) -> float:
     if investment_income <= 0:
         return 0.0
 
     fs = _normalize_filing_status(filing_status)
-    threshold = NIIT_THRESHOLDS[fs] * _year_factor(year, inflation_rate)
+    threshold = NIIT_THRESHOLDS[fs] * _year_factor(year - base_year + BASE_TAX_YEAR, inflation_rate)
     excess_agi = max(0.0, agi - threshold)
     taxable_base = min(max(0.0, investment_income), excess_agi)
     return taxable_base * 0.038
@@ -177,10 +193,11 @@ def compute_amt(
     filing_status: str,
     year: int,
     inflation_rate: float = DEFAULT_BRACKET_INFLATION,
+    base_year: int = BASE_TAX_YEAR,
 ) -> float:
     fs = _normalize_filing_status(filing_status)
     exemption, phaseout_start = AMT_EXEMPTIONS[fs]
-    factor = _year_factor(year, inflation_rate)
+    factor = _year_factor(year - base_year + BASE_TAX_YEAR, inflation_rate)
     exemption *= factor
     phaseout_start *= factor
 
@@ -198,6 +215,7 @@ def compute_state_tax(
     filing_status: str,
     year: int,
     inflation_rate: float = DEFAULT_BRACKET_INFLATION,
+    base_year: int = BASE_TAX_YEAR,
 ) -> float:
     amount = max(0.0, taxable_income)
     if amount <= 0:
@@ -209,7 +227,7 @@ def compute_state_tax(
     if state_brackets is None:
         return 0.0
     brackets = state_brackets.get(status) or state_brackets.get("single") or [(None, 0.0)]
-    factor = _year_factor(year, inflation_rate)
+    factor = _year_factor(year - base_year + BASE_TAX_YEAR, inflation_rate)
     adjusted = [(None if upper is None else upper * factor, rate) for upper, rate in brackets]
     return _progressive_tax(amount, adjusted)
 
@@ -268,10 +286,11 @@ def compute_standard_vs_itemized(
     itemized_details: float,
     standard_override: float | None,
     inflation_rate: float = DEFAULT_BRACKET_INFLATION,
+    base_year: int = BASE_TAX_YEAR,
 ) -> float:
     standard = standard_override
     if standard is None:
-        standard = _adjusted_standard_deduction(filing_status, year, inflation_rate)
+        standard = _adjusted_standard_deduction(filing_status, year, inflation_rate, base_year=base_year)
     return max(0.0, max(standard, itemized_details))
 
 
@@ -286,12 +305,15 @@ def compute_total_tax(
     qualified_dividends = max(0.0, summary.qualified_dividends)
     investment_income = max(0.0, summary.investment_income)
 
+    base_year = BASE_TAX_YEAR if tax_settings.use_current_brackets else tax_settings.bracket_year
+
     deduction = compute_standard_vs_itemized(
         filing_status,
         summary.year,
         summary.itemized_deductions,
         tax_settings.standard_deduction_override,
         inflation_rate,
+        base_year=base_year,
     )
 
     taxable_ordinary = max(0.0, ordinary_income - deduction)
@@ -299,31 +321,51 @@ def compute_total_tax(
     if tax_settings.federal_effective_rate_override is not None:
         federal_tax = taxable_ordinary * max(0.0, tax_settings.federal_effective_rate_override)
     else:
-        federal_tax = compute_federal_income_tax(taxable_ordinary, filing_status, summary.year, inflation_rate)
+        federal_tax = compute_federal_income_tax(
+            taxable_ordinary,
+            filing_status,
+            summary.year,
+            inflation_rate,
+            base_year=base_year,
+        )
 
     gross_ltcg = capital_gains + qualified_dividends
     if tax_settings.capital_gains_rate_override is not None:
         cap_tax = gross_ltcg * max(0.0, tax_settings.capital_gains_rate_override)
     else:
-        cap_tax = compute_capital_gains_tax(gross_ltcg, taxable_ordinary, filing_status, summary.year, inflation_rate)
+        cap_tax = compute_capital_gains_tax(
+            gross_ltcg,
+            taxable_ordinary,
+            filing_status,
+            summary.year,
+            inflation_rate,
+            base_year=base_year,
+        )
 
     agi = ordinary_income + gross_ltcg
 
     niit_tax = 0.0
     if tax_settings.niit_enabled:
         niit_base = max(0.0, investment_income) + max(0.0, gross_ltcg)
-        niit_tax = compute_niit(niit_base, agi, filing_status, summary.year, inflation_rate)
+        niit_tax = compute_niit(niit_base, agi, filing_status, summary.year, inflation_rate, base_year=base_year)
 
     amt_tax = 0.0
     if tax_settings.amt_enabled:
-        tentative_amt = compute_amt(agi, deduction, filing_status, summary.year, inflation_rate)
+        tentative_amt = compute_amt(agi, deduction, filing_status, summary.year, inflation_rate, base_year=base_year)
         regular_tax = federal_tax + cap_tax
         amt_tax = max(0.0, tentative_amt - regular_tax)
 
     if tax_settings.state_effective_rate_override is not None:
         state_tax = max(0.0, taxable_ordinary * tax_settings.state_effective_rate_override)
     else:
-        state_tax = compute_state_tax(taxable_ordinary, summary.state, filing_status, summary.year, inflation_rate)
+        state_tax = compute_state_tax(
+            taxable_ordinary,
+            summary.state,
+            filing_status,
+            summary.year,
+            inflation_rate,
+            base_year=base_year,
+        )
 
     total = federal_tax + cap_tax + niit_tax + amt_tax + state_tax + max(0.0, summary.early_withdrawal_penalty)
     return TaxResult(

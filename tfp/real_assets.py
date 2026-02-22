@@ -41,11 +41,11 @@ def appreciate_asset(state: RealAssetState, annual_rate: float) -> float:
     return growth
 
 
-def mortgage_payment(state: RealAssetState) -> tuple[float, float]:
-    """Return (total_payment, principal_paid)."""
+def mortgage_payment(state: RealAssetState) -> tuple[float, float, float]:
+    """Return (total_payment, principal_paid, interest_paid)."""
     mortgage = state.asset.mortgage
     if mortgage is None or state.mortgage_balance <= 0:
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0
 
     monthly_interest = mortgage.interest_rate / 12.0
     interest_component = state.mortgage_balance * monthly_interest
@@ -53,7 +53,7 @@ def mortgage_payment(state: RealAssetState) -> tuple[float, float]:
     principal_component = min(principal_component, state.mortgage_balance)
     total_payment = interest_component + principal_component
     state.mortgage_balance -= principal_component
-    return total_payment, principal_component
+    return total_payment, principal_component, interest_component
 
 
 def property_tax_monthly(state: RealAssetState) -> float:

@@ -76,6 +76,8 @@ def test_monte_carlo_uses_seed_and_run_count(tmp_path, sample_plan_dict):
     assert result_a.seed == 123
     assert result_a.success_rate is not None
     assert 0.0 <= result_a.success_rate <= 1.0
+    assert result_a.net_worth_percentiles is not None
+    assert len(result_a.net_worth_percentiles) == len(result_a.annual)
     assert result_a.annual[-1].net_worth_end == result_b.annual[-1].net_worth_end
 
 
@@ -92,3 +94,5 @@ def test_historical_rolling_periods_produces_multiple_scenarios(tmp_path, sample
     assert result.mode == "historical"
     assert result.scenario_count == 4
     assert result.success_rate is not None
+    assert result.net_worth_percentiles is not None
+    assert len(result.net_worth_percentiles) == len(result.annual)

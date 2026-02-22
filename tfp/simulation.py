@@ -22,6 +22,16 @@ class AnnualSummary:
 
 
 @dataclass(slots=True)
+class NetWorthPercentiles:
+    year: int
+    p10: float
+    p25: float
+    p50: float
+    p75: float
+    p90: float
+
+
+@dataclass(slots=True)
 class SimulationResult:
     mode: str
     seed: int | None
@@ -29,6 +39,7 @@ class SimulationResult:
     insolvency_years: list[int]
     scenario_count: int = 1
     success_rate: float | None = None
+    net_worth_percentiles: list[NetWorthPercentiles] | None = None
 
 
 def _build_annual_summary(engine_result: EngineResult) -> tuple[list[AnnualSummary], list[int]]:
@@ -63,10 +74,33 @@ def _aggregate_summaries(
 ) -> SimulationResult:
     scenario_count = len(scenario_annual)
     if scenario_count == 0:
-        return SimulationResult(mode=mode, seed=seed, annual=[], insolvency_years=[], scenario_count=0, success_rate=0.0)
+        return SimulationResult(
+            mode=mode,
+            seed=seed,
+            annual=[],
+            insolvency_years=[],
+            scenario_count=0,
+            success_rate=0.0,
+            net_worth_percentiles=[],
+        )
+
+    def _percentile(values: list[float], pct: float) -> float:
+        ordered = sorted(values)
+        if not ordered:
+            return 0.0
+        if len(ordered) == 1:
+            return ordered[0]
+        position = (len(ordered) - 1) * pct
+        low = int(math.floor(position))
+        high = int(math.ceil(position))
+        if low == high:
+            return ordered[low]
+        weight = position - low
+        return (ordered[low] * (1.0 - weight)) + (ordered[high] * weight)
 
     years = [row.year for row in scenario_annual[0]]
     aggregated: list[AnnualSummary] = []
+    percentiles: list[NetWorthPercentiles] = []
     for idx, year in enumerate(years):
         incomes = [annual[idx].income for annual in scenario_annual]
         expenses = [annual[idx].expenses for annual in scenario_annual]
@@ -81,6 +115,16 @@ def _aggregate_summaries(
                 net_worth_end=sum(net_worths) / scenario_count,
             )
         )
+        percentiles.append(
+            NetWorthPercentiles(
+                year=year,
+                p10=_percentile(net_worths, 0.10),
+                p25=_percentile(net_worths, 0.25),
+                p50=_percentile(net_worths, 0.50),
+                p75=_percentile(net_worths, 0.75),
+                p90=_percentile(net_worths, 0.90),
+            )
+        )
 
     insolvency_years = sorted({year for years in scenario_insolvency for year in years})
     success_count = sum(1 for years in scenario_insolvency if not years)
@@ -92,6 +136,7 @@ def _aggregate_summaries(
         insolvency_years=insolvency_years,
         scenario_count=scenario_count,
         success_rate=success_rate,
+        net_worth_percentiles=percentiles,
     )
 
 
@@ -168,6 +213,7 @@ def run_simulation(plan: Plan, mode_override: str | None = None, runs_override: 
             insolvency_years=insolvency_years,
             scenario_count=1,
             success_rate=success_rate,
+            net_worth_percentiles=[],
         )
 
     if mode == "monte_carlo":

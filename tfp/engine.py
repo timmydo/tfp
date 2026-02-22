@@ -54,6 +54,7 @@ class AnnualResult:
     healthcare_expenses: float = 0.0
     other_expenses: float = 0.0
     real_asset_expenses: float = 0.0
+    mortgage_interest_paid: float = 0.0
     withdrawals: float = 0.0
     realized_capital_gains: float = 0.0
     growth: float = 0.0
@@ -305,6 +306,7 @@ def run_deterministic(
         month_healthcare = 0.0
         month_other_expenses = 0.0
         month_real_asset_expenses = 0.0
+        month_mortgage_interest = 0.0
         month_withdrawals = 0.0
         month_realized_cg = 0.0
         month_growth = 0.0
@@ -521,8 +523,9 @@ def run_deterministic(
             appreciate_asset(state, annual_rate)
             month_real_asset_expenses += property_tax_monthly(state)
 
-            payment, _ = mortgage_payment(state)
+            payment, _, interest = mortgage_payment(state)
             month_real_asset_expenses += payment
+            month_mortgage_interest += interest
 
             for maintenance in state.asset.maintenance_expenses:
                 if maintenance.frequency == "monthly":
@@ -627,6 +630,7 @@ def run_deterministic(
         annual.healthcare_expenses += month_healthcare
         annual.other_expenses += month_other_expenses
         annual.real_asset_expenses += month_real_asset_expenses
+        annual.mortgage_interest_paid += month_mortgage_interest
         annual.withdrawals += month_withdrawals
         annual.realized_capital_gains += month_realized_cg
         annual.growth += month_growth
@@ -648,8 +652,7 @@ def run_deterministic(
                 itemized = min(plan.tax_settings.itemized_deductions.salt_cap, estimated_state_tax)
                 itemized += max(0.0, plan.tax_settings.itemized_deductions.charitable_contributions)
                 if plan.tax_settings.itemized_deductions.mortgage_interest_deductible:
-                    # Use a fixed share of real-asset expenses as a simple mortgage-interest proxy.
-                    itemized += max(0.0, annual.real_asset_expenses * 0.30)
+                    itemized += max(0.0, annual.mortgage_interest_paid)
 
                 tax_result = compute_total_tax(
                     YearIncomeSummary(

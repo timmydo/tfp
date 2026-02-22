@@ -50,6 +50,26 @@ def test_sample_plan_validates():
             lambda d: d["roth_conversions"][0].update({"from_account": "Vanguard Taxable"}),
             "roth_conversions[0].from_account: must be traditional_ira or 401k",
         ),
+        (
+            lambda d: d["income"][0].update({"withhold_percent": 1.5}),
+            "income[0].withhold_percent: must be <= 1",
+        ),
+        (
+            lambda d: d["accounts"][0].update({"bond_allocation_percent": 150}),
+            "accounts[0].bond_allocation_percent: must be <= 100",
+        ),
+        (
+            lambda d: d["simulation_settings"]["monte_carlo"].update({"correlation": 1.5}),
+            "simulation_settings.monte_carlo.correlation: must be <= 1",
+        ),
+        (
+            lambda d: d["social_security"][0].update({"fra_age_months": 12}),
+            "social_security[0].fra_age_months: must be <= 11",
+        ),
+        (
+            lambda d: d["healthcare"]["irmaa"].update({"lookback_years": 0}),
+            "healthcare.irmaa.lookback_years: must be >= 1",
+        ),
     ],
 )
 def test_validation_error_cases(tmp_path, sample_plan_dict, mutator, expected_error):
