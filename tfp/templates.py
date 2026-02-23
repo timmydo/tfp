@@ -11,6 +11,7 @@ def render_html_document(
     annual_table: str,
     flow_table: str,
     account_tables: str,
+    account_balance_table: str,
     calc_log_table: str,
     validation_table: str,
     payload_json: str,
@@ -76,6 +77,7 @@ def render_html_document(
       <button class=\"tab-btn\" data-tab=\"flows\">Money Flows</button>
       <button class=\"tab-btn\" data-tab=\"tables\">Tables</button>
       <button class=\"tab-btn\" data-tab=\"accounts\">Account Details</button>
+      <button class=\"tab-btn\" data-tab=\"account-balances\">Account Balance View</button>
       <button class=\"tab-btn\" data-tab=\"calc-log\">Calculation Log</button>
       <button class=\"tab-btn\" data-tab=\"validation\">Plan Validation</button>
     </div>
@@ -146,6 +148,19 @@ def render_html_document(
 
     <section class=\"tab\" id=\"tab-accounts\">
       <div class=\"panel\">{account_tables}</div>
+    </section>
+
+    <section class=\"tab\" id=\"tab-account-balances\">
+      <div class=\"panel\">
+        <h3 class=\"chart-title\">Account Balances by Year</h3>
+        <p class=\"chart-desc\">Stacked bar chart of year-end balances for each account.</p>
+        <canvas id=\"chart-account-balance-yearly\"></canvas>
+      </div>
+      <div class=\"panel\">
+        <h3 class=\"chart-title\">Monthly Account Balances</h3>
+        <p class=\"chart-desc\">End-of-month balances for each account.</p>
+        {account_balance_table}
+      </div>
     </section>
 
     <section class=\"tab\" id=\"tab-calc-log\">
@@ -374,6 +389,7 @@ def render_html_document(
       drawLine('chart-net-worth', years, payload.charts.netWorth, 'Net Worth', '#9a3412');
       drawLine('chart-income-expenses', years, payload.charts.income.map((v,i)=>v-payload.charts.expenses[i]), 'Income - Expenses', '#166534');
       drawAreaStack('chart-accounts-stack', years, payload.charts.accountsStacked, 'Net Worth by Account');
+      drawBars('chart-account-balance-yearly', years, payload.charts.accountBalances, 'Account Balances by Year');
       drawLine('chart-account-lines', years, payload.charts.netWorth, 'Total Balance Trend', '#1d4ed8');
       drawBars('chart-tax', years, payload.charts.taxBurden, 'Tax Burden');
       drawAreaStack('chart-allocation', years, payload.charts.allocation, 'Asset Allocation');
