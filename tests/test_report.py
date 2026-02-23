@@ -12,6 +12,7 @@ def test_report_html_includes_required_sections(tmp_path):
     assert code == 0
     text = output_path.read_text(encoding="utf-8")
 
+    assert "Overview" in text
     assert "Dashboard" in text
     assert "Charts" in text
     assert "Money Flows" in text
@@ -33,6 +34,9 @@ def test_report_html_includes_required_sections(tmp_path):
     assert 'id="tab-taxes"' in text
     assert 'id="tab-calc-log"' in text
     assert 'id="tab-validation"' in text
+    assert 'id="tab-overview"' in text
+    assert "Input Overview" in text
+    assert "Full normalized plan JSON used for calculations" in text
     assert "Mode:" in text
     assert "Plan hash:" in text
 

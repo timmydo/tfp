@@ -7,6 +7,7 @@ def render_html_document(
     *,
     title: str,
     subtitle: str,
+    overview_panel: str,
     dashboard_cards: str,
     annual_table: str,
     flow_table: str,
@@ -61,6 +62,9 @@ def render_html_document(
     .calc-log th, .calc-log td {{ padding: 0.25rem 0.3rem; font-size: 0.78rem; white-space: normal; overflow-wrap: anywhere; }}
     .insolvent {{ background: #ffe3e3; color: var(--warn); font-weight: 700; }}
     .subtle {{ color: var(--muted); font-size: 0.85rem; }}
+    details {{ margin-top: 0.75rem; }}
+    summary {{ cursor: pointer; }}
+    pre {{ margin: 0.5rem 0 0; padding: 0.6rem; background: #fff; border: 1px solid #e9dbc7; border-radius: 8px; overflow-x: auto; font-size: 0.78rem; line-height: 1.3; }}
     input[type=range] {{ width: 100%; }}
     .chart-tooltip {{ position: fixed; z-index: 9999; pointer-events: none; display: none; max-width: 360px; background: rgba(17, 24, 39, 0.96); color: #fff; border: 1px solid #374151; border-radius: 8px; padding: 0.45rem 0.55rem; font-size: 0.8rem; line-height: 1.25; white-space: pre-line; box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2); }}
     @media (max-width: 700px) {{
@@ -75,7 +79,8 @@ def render_html_document(
     <h1>{title}</h1>
     <div class=\"meta\">{subtitle}</div>
     <div class=\"tabs\" id=\"tabs\">
-      <button class=\"tab-btn active\" data-tab=\"dashboard\">Dashboard</button>
+      <button class=\"tab-btn active\" data-tab=\"overview\">Overview</button>
+      <button class=\"tab-btn\" data-tab=\"dashboard\">Dashboard</button>
       <button class=\"tab-btn\" data-tab=\"charts\">Charts</button>
       <button class=\"tab-btn\" data-tab=\"flows\">Money Flows</button>
       <button class=\"tab-btn\" data-tab=\"tables\">Totals by Year</button>
@@ -87,7 +92,11 @@ def render_html_document(
       <button class=\"tab-btn\" data-tab=\"validation\">Plan Validation</button>
     </div>
 
-    <section class=\"tab active\" id=\"tab-dashboard\">
+    <section class=\"tab active\" id=\"tab-overview\">
+      <div class=\"panel\">{overview_panel}</div>
+    </section>
+
+    <section class=\"tab\" id=\"tab-dashboard\">
       <div class=\"cards\">{dashboard_cards}</div>
       <div class=\"panel\">
         <h3 class=\"chart-title\">Net Worth Over Time</h3>

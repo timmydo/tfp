@@ -53,6 +53,188 @@ def _account_reason_lines(reason_map: dict[str, float]) -> list[str]:
     return lines
 
 
+def _pct(value: float | None) -> str:
+    if value is None:
+        return "-"
+    return f"{value * 100:.2f}%"
+
+
+def _yn(value: bool) -> str:
+    return "Yes" if value else "No"
+
+
+def _fmt_change(change_over_time: str, change_rate: float | None) -> str:
+    if change_rate is None:
+        return change_over_time
+    return f"{change_over_time} ({_pct(change_rate)})"
+
+
+def _render_table(headers: list[str], rows: list[list[str]]) -> str:
+    head = "".join(f"<th>{html.escape(col)}</th>" for col in headers)
+    body_rows = []
+    for row in rows:
+        cells = "".join(f"<td>{html.escape(cell)}</td>" for cell in row)
+        body_rows.append(f"<tr>{cells}</tr>")
+    return f'<div class="table-wrap"><table><thead><tr>{head}</tr></thead><tbody>{"".join(body_rows)}</tbody></table></div>'
+
+
+def _overview_panel(plan: Plan, plan_path: str) -> str:
+    spouse = plan.people.spouse
+    household_rows = [
+        ["Primary", plan.people.primary.name, plan.people.primary.birthday, plan.people.primary.state or "-"],
+        ["Spouse", spouse.name if spouse else "-", spouse.birthday if spouse else "-", spouse.state if spouse and spouse.state else "-"],
+    ]
+    household = _render_table(["Person", "Name", "Birthday", "State"], household_rows)
+
+    simulation_mode = plan.simulation_settings.mode
+    if simulation_mode == "monte_carlo":
+        sim_detail = (
+            f"{plan.simulation_settings.monte_carlo.num_simulations} sims, "
+            f"stocks { _pct(plan.simulation_settings.monte_carlo.stock_mean_return) } mean / { _pct(plan.simulation_settings.monte_carlo.stock_std_dev) } stdev, "
+            f"bonds { _pct(plan.simulation_settings.monte_carlo.bond_mean_return) } mean / { _pct(plan.simulation_settings.monte_carlo.bond_std_dev) } stdev, "
+            f"corr {plan.simulation_settings.monte_carlo.correlation:.2f}"
+        )
+    elif simulation_mode == "historical":
+        sim_detail = (
+            f"{plan.simulation_settings.historical.start_year}-{plan.simulation_settings.historical.end_year}, "
+            f"rolling periods: {_yn(plan.simulation_settings.historical.use_rolling_periods)}"
+        )
+    else:
+        sim_detail = "Deterministic assumptions"
+
+    key_settings_rows = [
+        ["Plan file", plan_path],
+        ["Filing status", plan.filing_status],
+        ["Plan window", f"{plan.plan_settings.plan_start} to {plan.plan_settings.plan_end}"],
+        ["Inflation", _pct(plan.plan_settings.inflation_rate)],
+        ["Default dividend tax treatment", plan.plan_settings.default_dividend_tax_treatment],
+        ["Simulation mode", simulation_mode],
+        ["Simulation detail", sim_detail],
+        ["Tax bracket baseline year", str(plan.tax_settings.bracket_year)],
+        ["Use current tax brackets", _yn(plan.tax_settings.use_current_brackets)],
+    ]
+    settings = _render_table(["Field", "Value"], key_settings_rows)
+
+    account_rows = [
+        [
+            account.name,
+            account.type,
+            account.owner,
+            _money(account.balance),
+            _money(account.cost_basis) if account.cost_basis is not None else "-",
+            _pct(account.growth_rate),
+            _pct(account.dividend_yield),
+            _pct(account.yearly_fees),
+            f"{account.bond_allocation_percent:.1f}%",
+            account.dividend_tax_treatment,
+            _yn(account.reinvest_dividends),
+            _yn(account.allow_withdrawals),
+        ]
+        for account in plan.accounts
+    ]
+    accounts = _render_table(
+        [
+            "Account",
+            "Type",
+            "Owner",
+            "Starting Balance",
+            "Cost Basis",
+            "Growth",
+            "Dividend Yield",
+            "Fees",
+            "Bond Allocation",
+            "Dividend Tax",
+            "Reinvest Dividends",
+            "Allow Withdrawals",
+        ],
+        account_rows or [["-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-"]],
+    )
+
+    income_rows = [
+        [
+            item.name,
+            item.owner,
+            _money(item.amount),
+            item.frequency,
+            f"{item.start_date} to {item.end_date}",
+            _fmt_change(item.change_over_time, item.change_rate),
+            item.tax_handling,
+            _pct(item.withhold_percent) if item.withhold_percent is not None else "-",
+        ]
+        for item in plan.income
+    ]
+    income = _render_table(
+        ["Income", "Owner", "Amount", "Frequency", "Date Range", "Growth Rule", "Tax Handling", "Withhold"],
+        income_rows or [["-", "-", "-", "-", "-", "-", "-", "-"]],
+    )
+
+    expense_rows = [
+        [
+            item.name,
+            item.owner,
+            _money(item.amount),
+            item.frequency,
+            f"{item.start_date} to {item.end_date}",
+            _fmt_change(item.change_over_time, item.change_rate),
+            item.spending_type,
+        ]
+        for item in plan.expenses
+    ]
+    expenses = _render_table(
+        ["Expense", "Owner", "Amount", "Frequency", "Date Range", "Growth Rule", "Type"],
+        expense_rows or [["-", "-", "-", "-", "-", "-", "-"]],
+    )
+
+    other_rows = [
+        ["Contributions", str(len(plan.contributions))],
+        ["Transfers", str(len(plan.transfers))],
+        ["Roth conversions", str(len(plan.roth_conversions))],
+        ["Social Security entries", str(len(plan.social_security))],
+        ["Healthcare pre-Medicare entries", str(len(plan.healthcare.pre_medicare))],
+        ["Healthcare post-Medicare entries", str(len(plan.healthcare.post_medicare))],
+        ["Real assets", str(len(plan.real_assets))],
+        ["One-time transactions", str(len(plan.transactions))],
+        ["IRMAA enabled", _yn(plan.healthcare.irmaa.enabled)],
+        ["IRMAA lookback years", str(plan.healthcare.irmaa.lookback_years)],
+        ["RMD enabled", _yn(plan.rmds.enabled)],
+        ["RMD start age", str(plan.rmds.rmd_start_age)],
+        ["RMD accounts", ", ".join(plan.rmds.accounts) if plan.rmds.accounts else "-"],
+        ["RMD destination account", plan.rmds.destination_account or "-"],
+        ["Withdrawal strategy mode", "account_specific_order" if plan.withdrawal_strategy.use_account_specific else "type_order"],
+        ["Withdrawal order", ", ".join(plan.withdrawal_strategy.account_specific_order if plan.withdrawal_strategy.use_account_specific else plan.withdrawal_strategy.order) or "-"],
+        ["RMD satisfied first", _yn(plan.withdrawal_strategy.rmd_satisfied_first)],
+        ["Federal effective override", _pct(plan.tax_settings.federal_effective_rate_override)],
+        ["State effective override", _pct(plan.tax_settings.state_effective_rate_override)],
+        ["Capital gains override", _pct(plan.tax_settings.capital_gains_rate_override)],
+        ["Standard deduction override", _money(plan.tax_settings.standard_deduction_override) if plan.tax_settings.standard_deduction_override is not None else "-"],
+        ["NIIT enabled", _yn(plan.tax_settings.niit_enabled)],
+        ["AMT enabled", _yn(plan.tax_settings.amt_enabled)],
+    ]
+    other = _render_table(["Additional Input Field", "Value"], other_rows)
+
+    plan_json = html.escape(json.dumps(asdict(plan), indent=2, sort_keys=True))
+
+    return (
+        "<h3>Input Overview</h3>"
+        "<p class=\"subtle\">Summary of the plan JSON fields used in this report's calculations.</p>"
+        "<h4>Household</h4>"
+        + household
+        + "<h4>Plan & Simulation Settings</h4>"
+        + settings
+        + "<h4>Starting Accounts</h4>"
+        + accounts
+        + "<h4>Income Breakdown</h4>"
+        + income
+        + "<h4>Expense Breakdown</h4>"
+        + expenses
+        + "<h4>Other Calculation Inputs</h4>"
+        + other
+        + "<details><summary><strong>Full normalized plan JSON used for calculations</strong></summary>"
+        + f"<pre>{plan_json}</pre>"
+        + "</details>"
+    )
+
+
 def _dashboard_cards(result: SimulationResult, detail: EngineResult) -> str:
     start_year = result.annual[0].year if result.annual else None
     end_year = result.annual[-1].year if result.annual else None
@@ -401,6 +583,7 @@ def render_report(plan: Plan, result: SimulationResult, plan_path: str) -> str:
     return render_html_document(
         title=title,
         subtitle=subtitle,
+        overview_panel=_overview_panel(plan, plan_path),
         dashboard_cards=_dashboard_cards(result, detail),
         annual_table=_annual_summary_table(result, detail),
         flow_table=_money_flow_table(detail),
