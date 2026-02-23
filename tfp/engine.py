@@ -802,13 +802,13 @@ def run_deterministic(
                 )
                 month_taxable_ordinary_income += ordinary_income
                 early_withdrawal_penalties[year] += penalty
-            if remaining > 0:
+            if remaining > 0.01:
                 insolvent = True
 
         # Step 19: Expense payment from cash.
         balances[cash_account] -= total_expenses
         _add_withdrawal(year, cash_account, total_expenses)
-        if balances[cash_account] < 0:
+        if balances[cash_account] < -0.01:
             insolvent = True
 
         # Step 20: Cost basis updates are handled inline.
@@ -875,7 +875,7 @@ def run_deterministic(
                 )
                 extra_withdrawals = sum(e.amount for e in events)
                 if extra_withdrawals <= 0:
-                    if remaining > 0:
+                    if remaining > 0.01:
                         insolvent = True
                     break
 
@@ -897,7 +897,7 @@ def run_deterministic(
                     month_taxable_ordinary_income += ordinary_income
                     annual.taxable_ordinary_income += ordinary_income
                     early_withdrawal_penalties[year] += penalty
-                if remaining > 0:
+                if remaining > 0.01:
                     insolvent = True
                     break
 
@@ -933,7 +933,7 @@ def run_deterministic(
         net_worth_end = sum(max(0.0, bal) for bal in balances.values()) + sum(
             max(0.0, state.current_value) for state in real_asset_state.values()
         )
-        if balances[cash_account] < 0:
+        if balances[cash_account] < -0.01:
             insolvent = True
         annual.net_worth_end = net_worth_end
         annual.insolvent = annual.insolvent or insolvent
