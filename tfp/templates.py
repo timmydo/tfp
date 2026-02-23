@@ -12,6 +12,7 @@ def render_html_document(
     flow_table: str,
     account_tables: str,
     account_balance_table: str,
+    account_flow_table: str,
     calc_log_table: str,
     validation_table: str,
     payload_json: str,
@@ -78,6 +79,7 @@ def render_html_document(
       <button class=\"tab-btn\" data-tab=\"tables\">Tables</button>
       <button class=\"tab-btn\" data-tab=\"accounts\">Account Details</button>
       <button class=\"tab-btn\" data-tab=\"account-balances\">Account Balance View</button>
+      <button class=\"tab-btn\" data-tab=\"account-flows\">Account Flow View</button>
       <button class=\"tab-btn\" data-tab=\"calc-log\">Calculation Log</button>
       <button class=\"tab-btn\" data-tab=\"validation\">Plan Validation</button>
     </div>
@@ -160,6 +162,19 @@ def render_html_document(
         <h3 class=\"chart-title\">Monthly Account Balances</h3>
         <p class=\"chart-desc\">End-of-month balances for each account.</p>
         {account_balance_table}
+      </div>
+    </section>
+
+    <section class=\"tab\" id=\"tab-account-flows\">
+      <div class=\"panel\">
+        <h3 class=\"chart-title\">Account Flows by Year</h3>
+        <p class=\"chart-desc\">Stacked bars of net money added/removed per account each year.</p>
+        <canvas id=\"chart-account-flow-yearly\"></canvas>
+      </div>
+      <div class=\"panel\">
+        <h3 class=\"chart-title\">Monthly Account Flows</h3>
+        <p class=\"chart-desc\">Month-over-month change in each account balance (positive = added, negative = removed).</p>
+        {account_flow_table}
       </div>
     </section>
 
@@ -316,6 +331,44 @@ def render_html_document(
       drawLegend(ctx, names, palette, M.left + 4, M.top + 14);
     }}
 
+    function drawBarsSigned(canvasId, years, stacks, title) {{
+      const c = document.getElementById(canvasId); if (!c) return;
+      const rect = c.getBoundingClientRect(); c.width = Math.max(380, Math.floor(rect.width)); c.height = Math.floor(rect.height);
+      const ctx = c.getContext('2d'); const w = c.width, h = c.height;
+      ctx.clearRect(0, 0, w, h);
+      const names = Object.keys(stacks);
+      const palette = ['#9a3412','#166534','#1d4ed8','#92400e','#6b21a8','#be123c','#0f766e'];
+      const posTotals = years.map((_, i) => names.reduce((sum, n) => sum + Math.max(0, Number((stacks[n] || [])[i] || 0)), 0));
+      const negTotals = years.map((_, i) => names.reduce((sum, n) => sum + Math.min(0, Number((stacks[n] || [])[i] || 0)), 0));
+      const maxV = Math.max(1, ...posTotals);
+      const minV = Math.min(-1, ...negTotals);
+      const span = Math.max(1, maxV - minV);
+      drawAxes(ctx, w, h, years, maxV, minV);
+      const plotW = w - M.left - M.right;
+      const plotH = h - M.top - M.bottom;
+      const zeroY = (h - M.bottom) - ((0 - minV) / span) * plotH;
+      years.forEach((_, i) => {{
+        const x = M.left + 4 + i * plotW / Math.max(1, years.length);
+        const bw = Math.max(2, plotW / Math.max(1, years.length) - 2);
+        let topPos = zeroY;
+        let topNeg = zeroY;
+        names.forEach((name, idx) => {{
+          const v = Number((stacks[name] || [])[i] || 0);
+          if (v === 0) return;
+          const bh = (Math.abs(v) / span) * plotH;
+          ctx.fillStyle = palette[idx % palette.length];
+          if (v > 0) {{
+            ctx.fillRect(x, topPos - bh, bw, bh);
+            topPos -= bh;
+          }} else {{
+            ctx.fillRect(x, topNeg, bw, bh);
+            topNeg += bh;
+          }}
+        }});
+      }});
+      drawLegend(ctx, names, palette, M.left + 4, M.top + 14);
+    }}
+
     function drawAreaStack(canvasId, years, stacks, title) {{
       const c = document.getElementById(canvasId); if (!c) return;
       const rect = c.getBoundingClientRect(); c.width = Math.max(380, Math.floor(rect.width)); c.height = Math.floor(rect.height);
@@ -390,6 +443,7 @@ def render_html_document(
       drawLine('chart-income-expenses', years, payload.charts.income.map((v,i)=>v-payload.charts.expenses[i]), 'Income - Expenses', '#166534');
       drawAreaStack('chart-accounts-stack', years, payload.charts.accountsStacked, 'Net Worth by Account');
       drawBars('chart-account-balance-yearly', years, payload.charts.accountBalances, 'Account Balances by Year');
+      drawBarsSigned('chart-account-flow-yearly', years, payload.charts.accountFlowByYear, 'Account Flows by Year');
       drawLine('chart-account-lines', years, payload.charts.netWorth, 'Total Balance Trend', '#1d4ed8');
       drawBars('chart-tax', years, payload.charts.taxBurden, 'Tax Burden');
       drawAreaStack('chart-allocation', years, payload.charts.allocation, 'Asset Allocation');

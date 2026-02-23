@@ -78,6 +78,24 @@ def _withdrawal_sources(engine_result: EngineResult, years: list[int]) -> dict[s
     return data
 
 
+def _account_flow_by_year(plan: Plan, engine_result: EngineResult, years: list[int]) -> dict[str, list[float]]:
+    data: dict[str, list[float]] = {account.name: [0.0 for _ in years] for account in plan.accounts}
+    year_to_idx = {year: idx for idx, year in enumerate(years)}
+    prev_balances = {account.name: float(account.balance) for account in plan.accounts}
+
+    for month in engine_result.monthly:
+        year_idx = year_to_idx.get(month.year)
+        if year_idx is None:
+            continue
+        for account in plan.accounts:
+            name = account.name
+            current = float(month.account_balances_end.get(name, 0.0))
+            delta = current - prev_balances.get(name, 0.0)
+            data[name][year_idx] += delta
+            prev_balances[name] = current
+    return data
+
+
 def build_chart_payload(plan: Plan, result: SimulationResult, engine_result: EngineResult) -> dict[str, object]:
     years = [row.year for row in result.annual]
     annual_income = [row.income for row in result.annual]
@@ -94,6 +112,7 @@ def build_chart_payload(plan: Plan, result: SimulationResult, engine_result: Eng
         "taxBurden": _annual_tax_stacks(engine_result, years),
         "allocation": _allocation_series(plan, engine_result, years),
         "withdrawalSources": _withdrawal_sources(engine_result, years),
+        "accountFlowByYear": _account_flow_by_year(plan, engine_result, years),
     }
 
     if result.net_worth_percentiles:

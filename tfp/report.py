@@ -209,6 +209,32 @@ def _account_balance_monthly_table(plan: Plan, detail: EngineResult) -> str:
     return f'<div class="table-wrap">{table_html}</div>'
 
 
+def _account_flow_monthly_table(plan: Plan, detail: EngineResult) -> str:
+    account_names = [account.name for account in plan.accounts]
+    prev_balances = {account.name: float(account.balance) for account in plan.accounts}
+    header_cells = "".join(f"<th>{html.escape(name)}</th>" for name in account_names)
+
+    rows: list[str] = []
+    for month in detail.monthly:
+        ym = f"{month.year:04d}-{month.month:02d}"
+        cells: list[str] = []
+        for name in account_names:
+            current = float(month.account_balances_end.get(name, 0.0))
+            delta = current - prev_balances.get(name, 0.0)
+            prev_balances[name] = current
+            cells.append(f"<td>{_money(delta)}</td>")
+        rows.append(f"<tr><td>{ym}</td>{''.join(cells)}</tr>")
+
+    table_html = (
+        "<table><thead><tr><th>Month</th>"
+        + header_cells
+        + "</tr></thead><tbody>"
+        + "".join(rows)
+        + "</tbody></table>"
+    )
+    return f'<div class="table-wrap">{table_html}</div>'
+
+
 def _report_payload(plan: Plan, result: SimulationResult, detail: EngineResult) -> dict[str, object]:
     return {
         "mode": result.mode,
@@ -242,6 +268,7 @@ def render_report(plan: Plan, result: SimulationResult, plan_path: str) -> str:
         flow_table=_money_flow_table(detail),
         account_tables=_account_detail_tables(detail),
         account_balance_table=_account_balance_monthly_table(plan, detail),
+        account_flow_table=_account_flow_monthly_table(plan, detail),
         calc_log_table=_calculation_log_table(detail),
         validation_table=_validation_panel(plan),
         payload_json=json.dumps(payload),
