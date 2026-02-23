@@ -349,7 +349,8 @@ def test_fica_withholding_is_applied_and_counted_in_total_tax(tmp_path, sample_p
     result = run_deterministic(plan)
 
     annual = result.annual[0]
-    expected_fica = compute_fica(100000, 0, 2026, filing_status=plan.filing_status)
+    # Annual income is annualized and distributed monthly.
+    expected_fica = compute_fica(100000 / 12.0, 0, 2026, filing_status=plan.filing_status)
     expected_income_tax = compute_total_tax(
         YearIncomeSummary(
             year=2026,

@@ -235,6 +235,10 @@ def _active_income_items(
 ) -> list[Income]:
     out: list[Income] = []
     for item in items:
+        if item.frequency == "annual":
+            if _is_active(item.start_date, item.end_date, current_index, plan_start, plan_end):
+                out.append(item)
+            continue
         if _occurs_this_month(
             frequency=item.frequency,
             start_date=item.start_date,
@@ -425,6 +429,8 @@ def run_deterministic(
                 current_year=year,
                 plan_start=plan_start,
             )
+            if income.frequency == "annual":
+                amount /= 12.0
             balances[cash_account] += amount
             _add_contribution(year, cash_account, amount)
             month_income += amount

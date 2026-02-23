@@ -26,6 +26,82 @@ def test_annual_rollup_matches_monthly_totals_for_first_year():
     assert round(sum(m.withdrawals for m in months), 6) == round(annual.withdrawals, 6)
 
 
+def test_annual_income_is_distributed_monthly(tmp_path, sample_plan_dict):
+    data = clone_plan(sample_plan_dict)
+    data["plan_settings"]["plan_start"] = "2026-01"
+    data["plan_settings"]["plan_end"] = "2026-12"
+    data["income"] = [
+        {
+            "name": "Salary",
+            "owner": "primary",
+            "amount": 120000,
+            "frequency": "annual",
+            "start_date": "start",
+            "end_date": "end",
+            "change_over_time": "fixed",
+            "change_rate": None,
+            "tax_handling": "tax_exempt",
+            "withhold_percent": None,
+        }
+    ]
+    data["social_security"] = []
+    data["expenses"] = []
+    data["contributions"] = []
+    data["transfers"] = []
+    data["transactions"] = []
+    data["real_assets"] = []
+    data["healthcare"]["pre_medicare"] = []
+    data["healthcare"]["post_medicare"] = []
+    data["accounts"] = [a for a in data["accounts"] if a["type"] == "cash"]
+    data["accounts"][0]["balance"] = 0
+
+    path = write_plan(tmp_path, data)
+    plan = load_plan(path)
+    result = run_deterministic(plan)
+
+    assert len(result.monthly) == 12
+    assert all(round(month.income, 2) == 10000.00 for month in result.monthly)
+    assert round(result.annual[0].income, 2) == 120000.00
+
+
+def test_one_time_income_remains_lump_sum(tmp_path, sample_plan_dict):
+    data = clone_plan(sample_plan_dict)
+    data["plan_settings"]["plan_start"] = "2026-01"
+    data["plan_settings"]["plan_end"] = "2026-12"
+    data["income"] = [
+        {
+            "name": "Bonus",
+            "owner": "primary",
+            "amount": 120000,
+            "frequency": "one_time",
+            "start_date": "2026-03",
+            "end_date": "2026-03",
+            "change_over_time": "fixed",
+            "change_rate": None,
+            "tax_handling": "tax_exempt",
+            "withhold_percent": None,
+        }
+    ]
+    data["social_security"] = []
+    data["expenses"] = []
+    data["contributions"] = []
+    data["transfers"] = []
+    data["transactions"] = []
+    data["real_assets"] = []
+    data["healthcare"]["pre_medicare"] = []
+    data["healthcare"]["post_medicare"] = []
+    data["accounts"] = [a for a in data["accounts"] if a["type"] == "cash"]
+    data["accounts"][0]["balance"] = 0
+
+    path = write_plan(tmp_path, data)
+    plan = load_plan(path)
+    result = run_deterministic(plan)
+
+    income_by_month = {month.month: round(month.income, 2) for month in result.monthly}
+    assert income_by_month[3] == 120000.00
+    assert sum(amount for month, amount in income_by_month.items() if month != 3) == 0.00
+
+
 def test_shortfall_triggers_withdrawals(tmp_path, sample_plan_dict):
     data = clone_plan(sample_plan_dict)
     data["plan_settings"]["plan_start"] = "2026-01"
