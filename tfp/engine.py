@@ -916,6 +916,7 @@ def run_deterministic(
                 strategy=plan.withdrawal_strategy,
                 cash_account_name=cash_account,
                 cost_basis=cost_basis,
+                owner_ages=owner_ages,
             )
             month_withdrawals += sum(e.amount for e in events)
             month_realized_cg += gains
@@ -998,6 +999,7 @@ def run_deterministic(
                     strategy=plan.withdrawal_strategy,
                     cash_account_name=cash_account,
                     cost_basis=cost_basis,
+                    owner_ages=owner_ages,
                 )
                 extra_withdrawals = sum(e.amount for e in events)
                 if extra_withdrawals > 0:
@@ -1109,6 +1111,7 @@ def run_deterministic(
                     strategy=plan.withdrawal_strategy,
                     cash_account_name=cash_account,
                     cost_basis=cost_basis,
+                    owner_ages=owner_ages,
                 )
                 extra_withdrawals = sum(e.amount for e in events)
                 if extra_withdrawals <= 0:

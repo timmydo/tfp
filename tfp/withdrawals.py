@@ -32,26 +32,33 @@ def _ordered_account_names(accounts: dict[str, Account], strategy: WithdrawalStr
     return names
 
 
-def cover_shortfall(
+PENALTY_AGE = 59.5
+PENALTY_ACCOUNT_TYPES = {"401k", "traditional_ira", "roth_ira"}
+
+
+def _is_penalty_eligible(account: Account, owner_ages: dict[str, float]) -> bool:
+    """Return True if withdrawing from this account would incur an early withdrawal penalty."""
+    return (
+        account.type in PENALTY_ACCOUNT_TYPES
+        and owner_ages.get(account.owner, 0.0) < PENALTY_AGE
+    )
+
+
+def _withdraw_from_accounts(
     *,
     shortfall: float,
+    ordered_names: list[str],
     balances: dict[str, float],
     accounts: dict[str, Account],
-    strategy: WithdrawalStrategy,
     cash_account_name: str,
     cost_basis: dict[str, CostBasisTracker],
-) -> tuple[float, list[WithdrawalEvent], float]:
-    """Try to fund shortfall into cash account.
-
-    Returns remaining shortfall, withdrawal events, and total realized capital gains.
-    """
-    if shortfall <= 0:
-        return 0.0, [], 0.0
-
-    events: list[WithdrawalEvent] = []
+    events: list[WithdrawalEvent],
+    skip_penalty: bool,
+    owner_ages: dict[str, float],
+) -> tuple[float, float]:
+    """Withdraw from accounts in order. Returns (remaining_shortfall, realized_gains)."""
     realized_gains = 0.0
-
-    for name in _ordered_account_names(accounts, strategy):
+    for name in ordered_names:
         if shortfall <= 0:
             break
         if name == cash_account_name:
@@ -59,6 +66,9 @@ def cover_shortfall(
 
         account = accounts[name]
         if not account.allow_withdrawals:
+            continue
+
+        if skip_penalty and _is_penalty_eligible(account, owner_ages):
             continue
 
         available = max(0.0, balances.get(name, 0.0))
@@ -78,4 +88,59 @@ def cover_shortfall(
         events.append(WithdrawalEvent(account=name, amount=amount, realized_gain=gain))
         shortfall -= amount
 
-    return max(0.0, shortfall), events, realized_gains
+    return shortfall, realized_gains
+
+
+def cover_shortfall(
+    *,
+    shortfall: float,
+    balances: dict[str, float],
+    accounts: dict[str, Account],
+    strategy: WithdrawalStrategy,
+    cash_account_name: str,
+    cost_basis: dict[str, CostBasisTracker],
+    owner_ages: dict[str, float],
+) -> tuple[float, list[WithdrawalEvent], float]:
+    """Try to fund shortfall into cash account.
+
+    Uses a two-pass approach: first withdraws from non-penalized accounts,
+    then falls back to penalty-eligible accounts as a last resort.
+
+    Returns remaining shortfall, withdrawal events, and total realized capital gains.
+    """
+    if shortfall <= 0:
+        return 0.0, [], 0.0
+
+    events: list[WithdrawalEvent] = []
+    ordered_names = _ordered_account_names(accounts, strategy)
+
+    # First pass: skip penalty-eligible accounts
+    shortfall, gains1 = _withdraw_from_accounts(
+        shortfall=shortfall,
+        ordered_names=ordered_names,
+        balances=balances,
+        accounts=accounts,
+        cash_account_name=cash_account_name,
+        cost_basis=cost_basis,
+        events=events,
+        skip_penalty=True,
+        owner_ages=owner_ages,
+    )
+
+    # Second pass: use penalty-eligible accounts as last resort
+    if shortfall > 0:
+        shortfall, gains2 = _withdraw_from_accounts(
+            shortfall=shortfall,
+            ordered_names=ordered_names,
+            balances=balances,
+            accounts=accounts,
+            cash_account_name=cash_account_name,
+            cost_basis=cost_basis,
+            events=events,
+            skip_penalty=False,
+            owner_ages=owner_ages,
+        )
+    else:
+        gains2 = 0.0
+
+    return max(0.0, shortfall), events, gains1 + gains2
