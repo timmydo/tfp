@@ -22,6 +22,32 @@ def _money(value: float) -> str:
     return f"${value:,.0f}"
 
 
+def _tooltip_text(lines: list[str]) -> str:
+    if not lines:
+        return "No detailed breakdown recorded."
+    return "\n".join(lines)
+
+
+def _money_cell(value: float, tooltip_lines: list[str]) -> str:
+    tooltip = html.escape(_tooltip_text(tooltip_lines), quote=True)
+    return f'<td title="{tooltip}">{_money(value)}</td>'
+
+
+def _format_signed(value: float) -> str:
+    return f"+{_money(value)}" if value > 0 else _money(value)
+
+
+def _account_reason_lines(reason_map: dict[str, float]) -> list[str]:
+    if not reason_map:
+        return []
+    lines: list[str] = []
+    for label, amount in sorted(reason_map.items(), key=lambda item: abs(item[1]), reverse=True):
+        if abs(amount) <= 0.01:
+            continue
+        lines.append(f"{label}: {_format_signed(amount)}")
+    return lines
+
+
 def _dashboard_cards(result: SimulationResult, detail: EngineResult) -> str:
     start_year = result.annual[0].year if result.annual else None
     end_year = result.annual[-1].year if result.annual else None
@@ -133,22 +159,23 @@ def _calculation_log_table(detail: EngineResult) -> str:
         sources = ", ".join(f"{name}: {_money(amount)}" for name, amount in sorted(row.withdrawal_sources.items()))
         if not sources:
             sources = "-"
+        reasons = row.calculation_reasons
         rows.append(
             "<tr>"
             + f"<td>{ym}</td>"
-            + f"<td>{_money(row.income)}</td>"
-            + f"<td>{_money(row.tax_withheld)}</td>"
-            + f"<td>{_money(row.contributions)}</td>"
-            + f"<td>{_money(row.transfers)}</td>"
-            + f"<td>{_money(row.healthcare_expenses)}</td>"
-            + f"<td>{_money(row.other_expenses + row.real_asset_expenses)}</td>"
-            + f"<td>{_money(row.withdrawals)}</td>"
-            + f"<td>{_money(row.realized_capital_gains)}</td>"
-            + f"<td>{_money(row.growth)}</td>"
-            + f"<td>{_money(row.dividends)}</td>"
-            + f"<td>{_money(row.fees)}</td>"
-            + f"<td>{_money(row.tax_settlement)}</td>"
-            + f"<td>{_money(row.net_worth_end)}</td>"
+            + _money_cell(row.income, reasons.get("income", []))
+            + _money_cell(row.tax_withheld, reasons.get("tax_withheld", []))
+            + _money_cell(row.contributions, reasons.get("contributions", []))
+            + _money_cell(row.transfers, reasons.get("transfers", []))
+            + _money_cell(row.healthcare_expenses, reasons.get("healthcare_expenses", []))
+            + _money_cell(row.other_expenses + row.real_asset_expenses, reasons.get("other_expenses", []))
+            + _money_cell(row.withdrawals, reasons.get("withdrawals", []))
+            + _money_cell(row.realized_capital_gains, reasons.get("realized_capital_gains", []))
+            + _money_cell(row.growth, reasons.get("growth", []))
+            + _money_cell(row.dividends, reasons.get("dividends", []))
+            + _money_cell(row.fees, reasons.get("fees", []))
+            + _money_cell(row.tax_settlement, reasons.get("tax_settlement", []))
+            + _money_cell(row.net_worth_end, reasons.get("net_worth_end", []))
             + f"<td>{html.escape(sources)}</td>"
             + f"<td>{'YES' if row.insolvent else ''}</td>"
             + "</tr>"
@@ -222,7 +249,8 @@ def _account_flow_monthly_table(plan: Plan, detail: EngineResult) -> str:
             current = float(month.account_balances_end.get(name, 0.0))
             delta = current - prev_balances.get(name, 0.0)
             prev_balances[name] = current
-            cells.append(f"<td>{_money(delta)}</td>")
+            tooltip_lines = _account_reason_lines(month.account_flow_reasons.get(name, {}))
+            cells.append(_money_cell(delta, tooltip_lines))
         rows.append(f"<tr><td>{ym}</td>{''.join(cells)}</tr>")
 
     table_html = (

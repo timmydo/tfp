@@ -173,7 +173,7 @@ def render_html_document(
       </div>
       <div class=\"panel\">
         <h3 class=\"chart-title\">Monthly Account Flows</h3>
-        <p class=\"chart-desc\">Month-over-month change in each account balance (positive = added, negative = removed).</p>
+        <p class=\"chart-desc\">Month-over-month change in each account balance (positive = added, negative = removed). Hover a cell for its breakdown.</p>
         {account_flow_table}
       </div>
     </section>
@@ -181,7 +181,7 @@ def render_html_document(
     <section class=\"tab\" id=\"tab-calc-log\">
       <div class=\"panel\">
         <h3 class=\"chart-title\">Monthly Calculation Log</h3>
-        <p class=\"chart-desc\">Verbose monthly ledger of computed amounts used by the deterministic engine.</p>
+        <p class=\"chart-desc\">Verbose monthly ledger of computed amounts used by the deterministic engine. Hover numeric cells for why they were calculated.</p>
         {calc_log_table}
       </div>
     </section>

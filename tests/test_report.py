@@ -264,9 +264,11 @@ def test_account_flow_view_chart_and_monthly_table_values(tmp_path, sample_plan_
     assert code == 0
 
     text = output_path.read_text(encoding="utf-8")
-    assert "<td>2026-01</td><td>$-400</td><td>$300</td>" in text
-    assert "<td>2026-02</td><td>$-100</td><td>$0</td>" in text
-    assert "<td>2026-03</td><td>$-100</td><td>$0</td>" in text
+    assert re.search(r"<td>2026-01</td><td[^>]*>\$-400</td><td[^>]*>\$300</td>", text)
+    assert re.search(r"<td>2026-02</td><td[^>]*>\$-100</td><td[^>]*>\$0</td>", text)
+    assert re.search(r"<td>2026-03</td><td[^>]*>\$-100</td><td[^>]*>\$0</td>", text)
+    assert "Transfer out: Move to brokerage: $-300" in text
+    assert "Transfer in: Move to brokerage: +$300" in text
 
     payload_match = re.search(r"const payload = (\{.*?\});", text, flags=re.DOTALL)
     assert payload_match is not None
