@@ -1,3 +1,4 @@
+import tfp.__main__ as cli
 from tests.helpers import clone_plan, write_plan
 from tfp.__main__ import main
 
@@ -31,3 +32,26 @@ def test_summary_mode_writes_output(tmp_path, sample_plan_dict):
     assert output_path.exists()
     text = output_path.read_text(encoding="utf-8")
     assert "TFP Report" in text
+
+
+def test_server_mode_rejects_non_positive_watch_interval(tmp_path, sample_plan_dict):
+    plan_path = write_plan(tmp_path, sample_plan_dict)
+    code = main([str(plan_path), "--server", "--watch-interval", "0"])
+    assert code == 2
+
+
+def test_server_mode_generates_initial_report(tmp_path, sample_plan_dict, monkeypatch):
+    plan_path = write_plan(tmp_path, sample_plan_dict)
+    output_path = tmp_path / "served.html"
+
+    def _interrupt_serve_forever(self):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli.ThreadingHTTPServer, "serve_forever", _interrupt_serve_forever)
+    code = main(
+        [str(plan_path), "--server", "--mode", "deterministic", "-o", str(output_path), "--port", "0", "--watch-interval", "0.01"]
+    )
+
+    assert code == 0
+    assert output_path.exists()
+    assert "TFP Report" in output_path.read_text(encoding="utf-8")
