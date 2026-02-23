@@ -2,7 +2,7 @@ import pytest
 
 from tests.helpers import clone_plan, write_plan
 from tfp.schema import load_plan
-from tfp.validate import validate_plan
+from tfp.validate import check_plan_sanity, validate_plan
 
 
 def _run_validation(tmp_path, sample_plan_dict, mutator):
@@ -139,3 +139,25 @@ def test_roth_conversion_requires_exactly_one_amount_mode(tmp_path, sample_plan_
 
     result = _run_validation(tmp_path, sample_plan_dict, mutator)
     assert "roth_conversions[0]: provide exactly one of annual_amount or fill_to_bracket" in result.errors
+
+
+def test_sanity_checks_warn_for_unusual_assumptions(tmp_path, sample_plan_dict):
+    def mutator(data):
+        data["plan_settings"]["inflation_rate"] = 0.09
+        data["accounts"][0]["growth_rate"] = 0.20
+        data["accounts"][0]["dividend_yield"] = 0.07
+        data["accounts"][0]["yearly_fees"] = 0.03
+        data["simulation_settings"]["monte_carlo"]["num_simulations"] = 100
+        data["simulation_settings"]["monte_carlo"]["stock_mean_return"] = 0.16
+
+    data = clone_plan(sample_plan_dict)
+    mutator(data)
+    path = write_plan(tmp_path, data)
+    plan = load_plan(path)
+    result = check_plan_sanity(plan)
+
+    assert any("plan_settings.inflation_rate" in msg for msg in result.warnings)
+    assert any("accounts[0]" in msg and ".growth_rate" in msg for msg in result.warnings)
+    assert any("accounts[0]" in msg and ".yearly_fees" in msg for msg in result.warnings)
+    assert any("simulation_settings.monte_carlo.num_simulations" in msg for msg in result.warnings)
+    assert any("simulation_settings.monte_carlo.stock_mean_return" in msg for msg in result.warnings)

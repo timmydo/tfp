@@ -14,10 +14,14 @@ def test_report_html_includes_required_sections(tmp_path):
     assert "Money Flows" in text
     assert "Tables" in text
     assert "Account Details" in text
+    assert "Calculation Log" in text
+    assert "Plan Validation" in text
 
     assert 'id="chart-net-worth"' in text
     assert 'id="chart-tax"' in text
     assert 'id="chart-sankey"' in text
+    assert 'id="tab-calc-log"' in text
+    assert 'id="tab-validation"' in text
     assert "Mode:" in text
     assert "Plan hash:" in text
 

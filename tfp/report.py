@@ -15,6 +15,7 @@ from .sankey import build_sankey_payload
 from .schema import Plan
 from .simulation import SimulationResult
 from .templates import render_html_document
+from .validate import check_plan_sanity, validate_plan
 
 
 def _money(value: float) -> str:
@@ -125,6 +126,65 @@ def _account_detail_tables(detail: EngineResult) -> str:
     return "".join(sections)
 
 
+def _calculation_log_table(detail: EngineResult) -> str:
+    rows: list[str] = []
+    for row in detail.monthly:
+        ym = f"{row.year:04d}-{row.month:02d}"
+        sources = ", ".join(f"{name}: {_money(amount)}" for name, amount in sorted(row.withdrawal_sources.items()))
+        if not sources:
+            sources = "-"
+        rows.append(
+            "<tr>"
+            + f"<td>{ym}</td>"
+            + f"<td>{_money(row.income)}</td>"
+            + f"<td>{_money(row.tax_withheld)}</td>"
+            + f"<td>{_money(row.contributions)}</td>"
+            + f"<td>{_money(row.transfers)}</td>"
+            + f"<td>{_money(row.healthcare_expenses)}</td>"
+            + f"<td>{_money(row.other_expenses + row.real_asset_expenses)}</td>"
+            + f"<td>{_money(row.withdrawals)}</td>"
+            + f"<td>{_money(row.realized_capital_gains)}</td>"
+            + f"<td>{_money(row.growth)}</td>"
+            + f"<td>{_money(row.dividends)}</td>"
+            + f"<td>{_money(row.fees)}</td>"
+            + f"<td>{_money(row.tax_settlement)}</td>"
+            + f"<td>{_money(row.net_worth_end)}</td>"
+            + f"<td>{html.escape(sources)}</td>"
+            + f"<td>{'YES' if row.insolvent else ''}</td>"
+            + "</tr>"
+        )
+    return (
+        "<table><thead><tr>"
+        "<th>Month</th><th>Income</th><th>Withholding</th><th>Contrib</th><th>Transfers</th>"
+        "<th>Healthcare</th><th>Other Exp</th><th>Withdrawals</th><th>Cap Gains</th><th>Growth</th>"
+        "<th>Dividends</th><th>Fees</th><th>Tax Settle</th><th>Net Worth</th><th>Withdrawal Sources</th><th>Insolvent</th>"
+        "</tr></thead><tbody>"
+        + "".join(rows)
+        + "</tbody></table>"
+    )
+
+
+def _validation_panel(plan: Plan) -> str:
+    validation = validate_plan(plan)
+    sanity = check_plan_sanity(plan)
+
+    rows: list[str] = []
+    for msg in validation.errors:
+        rows.append(f"<tr><td>Error</td><td>{html.escape(msg)}</td></tr>")
+    for msg in validation.warnings:
+        rows.append(f"<tr><td>Validation warning</td><td>{html.escape(msg)}</td></tr>")
+    for msg in sanity.warnings:
+        rows.append(f"<tr><td>Sanity warning</td><td>{html.escape(msg)}</td></tr>")
+    if not rows:
+        rows.append("<tr><td>OK</td><td>No validation/sanity issues detected.</td></tr>")
+
+    return (
+        "<table><thead><tr><th>Type</th><th>Detail</th></tr></thead><tbody>"
+        + "".join(rows)
+        + "</tbody></table>"
+    )
+
+
 def _report_payload(plan: Plan, result: SimulationResult, detail: EngineResult) -> dict[str, object]:
     return {
         "mode": result.mode,
@@ -157,6 +217,8 @@ def render_report(plan: Plan, result: SimulationResult, plan_path: str) -> str:
         annual_table=_annual_summary_table(result, detail),
         flow_table=_money_flow_table(detail),
         account_tables=_account_detail_tables(detail),
+        calc_log_table=_calculation_log_table(detail),
+        validation_table=_validation_panel(plan),
         payload_json=json.dumps(payload),
     )
 

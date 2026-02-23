@@ -66,6 +66,11 @@ class ValidationResult:
         return not self.errors
 
 
+@dataclass(slots=True)
+class SanityCheckResult:
+    warnings: list[str] = field(default_factory=list)
+
+
 def _is_date_token(value: str | None) -> bool:
     if value is None:
         return False
@@ -405,3 +410,101 @@ def validate_plan(plan: Plan) -> ValidationResult:
             )
 
     return result
+
+
+def check_plan_sanity(plan: Plan) -> SanityCheckResult:
+    """Return non-blocking warnings for common planning assumption mistakes."""
+    warnings: list[str] = []
+
+    def warn_if_outside(path: str, value: float, low: float, high: float, guidance: str) -> None:
+        if value < low or value > high:
+            warnings.append(
+                f"{path}: {value:.3f} is outside a common range [{low:.3f}, {high:.3f}]. {guidance}"
+            )
+
+    warn_if_outside(
+        "plan_settings.inflation_rate",
+        plan.plan_settings.inflation_rate,
+        0.0,
+        0.05,
+        "Typical long-run planning assumptions are often around 0.02-0.04.",
+    )
+
+    for idx, account in enumerate(plan.accounts):
+        base = f"accounts[{idx}] ({account.name})"
+        warn_if_outside(
+            f"{base}.growth_rate",
+            account.growth_rate,
+            -0.02,
+            0.12,
+            "Check whether this annual expected return is realistic for this account mix.",
+        )
+        warn_if_outside(
+            f"{base}.dividend_yield",
+            account.dividend_yield,
+            0.0,
+            0.06,
+            "Values above this may be aggressive unless concentrated in high-yield assets.",
+        )
+        if account.yearly_fees > 0.02:
+            warnings.append(
+                f"{base}.yearly_fees: {account.yearly_fees:.3f} exceeds 2%/yr, which is unusually high."
+            )
+        if account.growth_rate + account.dividend_yield > 0.16:
+            warnings.append(
+                f"{base}: growth_rate + dividend_yield is {account.growth_rate + account.dividend_yield:.3f};"
+                " combined return assumptions may be overly optimistic."
+            )
+
+    for idx, income in enumerate(plan.income):
+        if income.tax_handling == "withhold" and income.withhold_percent is not None:
+            if income.withhold_percent < 0.10 or income.withhold_percent > 0.45:
+                warnings.append(
+                    f"income[{idx}] ({income.name}).withhold_percent: {income.withhold_percent:.3f}"
+                    " is outside a common placeholder range [0.10, 0.45]."
+                )
+
+    horizon_months = (
+        _date_to_ordinal(plan.plan_settings.plan_end, plan.plan_settings.plan_start, plan.plan_settings.plan_end)
+        - _date_to_ordinal(plan.plan_settings.plan_start, plan.plan_settings.plan_start, plan.plan_settings.plan_end)
+    )
+    if horizon_months > (60 * 12):
+        warnings.append(
+            "plan_settings: plan horizon exceeds 60 years; long-range outputs become highly assumption-sensitive."
+        )
+
+    mc = plan.simulation_settings.monte_carlo
+    warn_if_outside(
+        "simulation_settings.monte_carlo.stock_mean_return",
+        mc.stock_mean_return,
+        0.03,
+        0.12,
+        "Consider whether this aligns with your capital market assumptions.",
+    )
+    warn_if_outside(
+        "simulation_settings.monte_carlo.bond_mean_return",
+        mc.bond_mean_return,
+        0.0,
+        0.07,
+        "Bond return assumptions above this are uncommon in long-run real terms.",
+    )
+    warn_if_outside(
+        "simulation_settings.monte_carlo.stock_std_dev",
+        mc.stock_std_dev,
+        0.08,
+        0.35,
+        "Check annual equity volatility assumption.",
+    )
+    warn_if_outside(
+        "simulation_settings.monte_carlo.bond_std_dev",
+        mc.bond_std_dev,
+        0.02,
+        0.15,
+        "Check annual bond volatility assumption.",
+    )
+    if mc.num_simulations < 500:
+        warnings.append(
+            "simulation_settings.monte_carlo.num_simulations: values below 500 can produce noisy success-rate estimates."
+        )
+
+    return SanityCheckResult(warnings=warnings)

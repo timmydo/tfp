@@ -3,7 +3,18 @@
 from __future__ import annotations
 
 
-def render_html_document(*, title: str, subtitle: str, dashboard_cards: str, annual_table: str, flow_table: str, account_tables: str, payload_json: str) -> str:
+def render_html_document(
+    *,
+    title: str,
+    subtitle: str,
+    dashboard_cards: str,
+    annual_table: str,
+    flow_table: str,
+    account_tables: str,
+    calc_log_table: str,
+    validation_table: str,
+    payload_json: str,
+) -> str:
     return f"""<!doctype html>
 <html lang=\"en\">
 <head>
@@ -62,6 +73,8 @@ def render_html_document(*, title: str, subtitle: str, dashboard_cards: str, ann
       <button class=\"tab-btn\" data-tab=\"flows\">Money Flows</button>
       <button class=\"tab-btn\" data-tab=\"tables\">Tables</button>
       <button class=\"tab-btn\" data-tab=\"accounts\">Account Details</button>
+      <button class=\"tab-btn\" data-tab=\"calc-log\">Calculation Log</button>
+      <button class=\"tab-btn\" data-tab=\"validation\">Plan Validation</button>
     </div>
 
     <section class=\"tab active\" id=\"tab-dashboard\">
@@ -130,6 +143,22 @@ def render_html_document(*, title: str, subtitle: str, dashboard_cards: str, ann
 
     <section class=\"tab\" id=\"tab-accounts\">
       <div class=\"panel\">{account_tables}</div>
+    </section>
+
+    <section class=\"tab\" id=\"tab-calc-log\">
+      <div class=\"panel\">
+        <h3 class=\"chart-title\">Monthly Calculation Log</h3>
+        <p class=\"chart-desc\">Verbose monthly ledger of computed amounts used by the deterministic engine.</p>
+        {calc_log_table}
+      </div>
+    </section>
+
+    <section class=\"tab\" id=\"tab-validation\">
+      <div class=\"panel\">
+        <h3 class=\"chart-title\">Plan Validation and Common Mistakes</h3>
+        <p class=\"chart-desc\">Schema validation warnings plus non-blocking sanity checks for unusual assumptions.</p>
+        {validation_table}
+      </div>
     </section>
   </div>
 
