@@ -15,7 +15,7 @@ def test_report_html_includes_required_sections(tmp_path):
     assert "Dashboard" in text
     assert "Charts" in text
     assert "Money Flows" in text
-    assert "Tables" in text
+    assert "Totals by Year" in text
     assert "Account Details" in text
     assert "Account Balance View" in text
     assert "Account Flow View" in text

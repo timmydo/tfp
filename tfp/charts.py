@@ -96,6 +96,23 @@ def _account_flow_by_year(plan: Plan, engine_result: EngineResult, years: list[i
     return data
 
 
+def _expense_breakdown(engine_result: EngineResult, years: list[int]) -> dict[str, list[float]]:
+    by_year = {row.year: row for row in engine_result.annual}
+    healthcare: list[float] = []
+    other: list[float] = []
+    real_assets: list[float] = []
+    for year in years:
+        row = by_year.get(year)
+        healthcare.append(row.healthcare_expenses if row else 0.0)
+        other.append(row.other_expenses if row else 0.0)
+        real_assets.append(row.real_asset_expenses if row else 0.0)
+    return {
+        "healthcare": healthcare,
+        "other": other,
+        "real_assets": real_assets,
+    }
+
+
 def build_chart_payload(plan: Plan, result: SimulationResult, engine_result: EngineResult) -> dict[str, object]:
     years = [row.year for row in result.annual]
     annual_income = [row.income for row in result.annual]
@@ -107,6 +124,7 @@ def build_chart_payload(plan: Plan, result: SimulationResult, engine_result: Eng
         "netWorth": net_worth,
         "income": annual_income,
         "expenses": annual_expenses,
+        "expenseBreakdown": _expense_breakdown(engine_result, years),
         "accountsStacked": _stacked_by_account(plan, engine_result, years),
         "accountBalances": _stacked_by_account(plan, engine_result, years),
         "taxBurden": _annual_tax_stacks(engine_result, years),

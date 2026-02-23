@@ -62,6 +62,7 @@ def render_html_document(
     .insolvent {{ background: #ffe3e3; color: var(--warn); font-weight: 700; }}
     .subtle {{ color: var(--muted); font-size: 0.85rem; }}
     input[type=range] {{ width: 100%; }}
+    .chart-tooltip {{ position: fixed; z-index: 9999; pointer-events: none; display: none; max-width: 360px; background: rgba(17, 24, 39, 0.96); color: #fff; border: 1px solid #374151; border-radius: 8px; padding: 0.45rem 0.55rem; font-size: 0.8rem; line-height: 1.25; white-space: pre-line; box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2); }}
     @media (max-width: 700px) {{
       h1 {{ font-size: 1.5rem; }}
       .tab-btn {{ font-size: 0.9rem; }}
@@ -77,7 +78,7 @@ def render_html_document(
       <button class=\"tab-btn active\" data-tab=\"dashboard\">Dashboard</button>
       <button class=\"tab-btn\" data-tab=\"charts\">Charts</button>
       <button class=\"tab-btn\" data-tab=\"flows\">Money Flows</button>
-      <button class=\"tab-btn\" data-tab=\"tables\">Tables</button>
+      <button class=\"tab-btn\" data-tab=\"tables\">Totals by Year</button>
       <button class=\"tab-btn\" data-tab=\"accounts\">Account Details</button>
       <button class=\"tab-btn\" data-tab=\"account-balances\">Account Balance View</button>
       <button class=\"tab-btn\" data-tab=\"account-flows\">Account Flow View</button>
@@ -207,9 +208,17 @@ def render_html_document(
 
   <script>
     const payload = {payload_json};
+    let chartTooltipEl = null;
 
     function fmtMoney(v) {{
       return '$' + (Number(v || 0)).toLocaleString(undefined, {{ maximumFractionDigits: 0 }});
+    }}
+
+    function fmtSignedMoney(v) {{
+      const n = Number(v || 0);
+      if (n > 0) return '+' + fmtMoney(n);
+      if (n < 0) return '-$' + Math.abs(n).toLocaleString(undefined, {{ maximumFractionDigits: 0 }});
+      return fmtMoney(0);
     }}
 
     function tabsInit() {{
@@ -225,6 +234,81 @@ def render_html_document(
     }}
 
     const M = {{ left: 70, right: 20, top: 20, bottom: 40 }};
+
+    function getChartTooltip() {{
+      if (!chartTooltipEl) {{
+        chartTooltipEl = document.createElement('div');
+        chartTooltipEl.className = 'chart-tooltip';
+        document.body.appendChild(chartTooltipEl);
+      }}
+      return chartTooltipEl;
+    }}
+
+    function hideChartTooltip() {{
+      const el = getChartTooltip();
+      el.style.display = 'none';
+      el.textContent = '';
+    }}
+
+    function showChartTooltip(event, lines) {{
+      if (!lines || lines.length === 0) {{
+        hideChartTooltip();
+        return;
+      }}
+      const el = getChartTooltip();
+      el.textContent = lines.join('\\n');
+      el.style.display = 'block';
+      el.style.left = (event.clientX + 14) + 'px';
+      el.style.top = (event.clientY + 14) + 'px';
+    }}
+
+    function stackBreakdownLines(stacks, idx, signed, maxItems) {{
+      const limit = maxItems || 8;
+      const entries = Object.entries(stacks || {{}})
+        .map(([name, series]) => [name, Number((series || [])[idx] || 0)])
+        .filter(([, value]) => Math.abs(value) > 0.01)
+        .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+      const shown = entries.slice(0, limit);
+      const lines = shown.map(([name, value]) => `${{name}}: ${{signed ? fmtSignedMoney(value) : fmtMoney(value)}}`);
+      if (entries.length > shown.length) {{
+        lines.push(`+${{entries.length - shown.length}} more`);
+      }}
+      const total = entries.reduce((sum, [, value]) => sum + value, 0);
+      lines.push(`Total: ${{signed ? fmtSignedMoney(total) : fmtMoney(total)}}`);
+      return lines;
+    }}
+
+    function attachYearTooltip(canvas, years, linesForIndex) {{
+      if (!canvas) return;
+      if (canvas._tfpTooltipHandlers) {{
+        canvas.removeEventListener('mousemove', canvas._tfpTooltipHandlers.move);
+        canvas.removeEventListener('mouseleave', canvas._tfpTooltipHandlers.leave);
+      }}
+      const onMove = (event) => {{
+        if (!years || years.length === 0) {{
+          hideChartTooltip();
+          return;
+        }}
+        const rect = canvas.getBoundingClientRect();
+        const scaledX = (event.clientX - rect.left) * (canvas.width / Math.max(1, rect.width));
+        const scaledY = (event.clientY - rect.top) * (canvas.height / Math.max(1, rect.height));
+        if (scaledX < M.left || scaledX > canvas.width - M.right || scaledY < M.top || scaledY > canvas.height - M.bottom) {{
+          hideChartTooltip();
+          return;
+        }}
+        const plotW = canvas.width - M.left - M.right;
+        const rawIdx = years.length === 1
+          ? 0
+          : Math.round(((scaledX - M.left) / Math.max(1, plotW)) * (years.length - 1));
+        const idx = Math.max(0, Math.min(years.length - 1, rawIdx));
+        const lines = linesForIndex(idx) || [];
+        showChartTooltip(event, [`Year: ${{years[idx]}}`, ...lines]);
+      }};
+      const onLeave = () => hideChartTooltip();
+      canvas.addEventListener('mousemove', onMove);
+      canvas.addEventListener('mouseleave', onLeave);
+      canvas._tfpTooltipHandlers = {{ move: onMove, leave: onLeave }};
+    }}
 
     function drawAxes(ctx, w, h, years, maxV, minV) {{
       const plotH = h - M.top - M.bottom;
@@ -294,7 +378,7 @@ def render_html_document(
       }});
     }}
 
-    function drawLine(canvasId, years, series, title, color) {{
+    function drawLine(canvasId, years, series, title, color, tooltipBuilder) {{
       const c = document.getElementById(canvasId); if (!c) return;
       const rect = c.getBoundingClientRect(); c.width = Math.max(380, Math.floor(rect.width)); c.height = Math.floor(rect.height);
       const ctx = c.getContext('2d'); const w = c.width, h = c.height;
@@ -311,9 +395,13 @@ def render_html_document(
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }});
       ctx.stroke();
+      attachYearTooltip(c, years, (idx) => {{
+        if (tooltipBuilder) return tooltipBuilder(idx);
+        return [`Value: ${{fmtMoney(vals[idx] || 0)}}`];
+      }});
     }}
 
-    function drawBars(canvasId, years, stacks, title) {{
+    function drawBars(canvasId, years, stacks, title, tooltipBuilder) {{
       const c = document.getElementById(canvasId); if (!c) return;
       const rect = c.getBoundingClientRect(); c.width = Math.max(380, Math.floor(rect.width)); c.height = Math.floor(rect.height);
       const ctx = c.getContext('2d'); const w = c.width, h = c.height;
@@ -339,9 +427,13 @@ def render_html_document(
         }});
       }});
       drawLegend(ctx, names, palette, M.left + 4, M.top + 14);
+      attachYearTooltip(c, years, (idx) => {{
+        if (tooltipBuilder) return tooltipBuilder(idx);
+        return stackBreakdownLines(stacks, idx, false, 8);
+      }});
     }}
 
-    function drawBarsSigned(canvasId, years, stacks, title) {{
+    function drawBarsSigned(canvasId, years, stacks, title, tooltipBuilder) {{
       const c = document.getElementById(canvasId); if (!c) return;
       const rect = c.getBoundingClientRect(); c.width = Math.max(380, Math.floor(rect.width)); c.height = Math.floor(rect.height);
       const ctx = c.getContext('2d'); const w = c.width, h = c.height;
@@ -377,9 +469,13 @@ def render_html_document(
         }});
       }});
       drawLegend(ctx, names, palette, M.left + 4, M.top + 14);
+      attachYearTooltip(c, years, (idx) => {{
+        if (tooltipBuilder) return tooltipBuilder(idx);
+        return stackBreakdownLines(stacks, idx, true, 8);
+      }});
     }}
 
-    function drawAreaStack(canvasId, years, stacks, title) {{
+    function drawAreaStack(canvasId, years, stacks, title, tooltipBuilder) {{
       const c = document.getElementById(canvasId); if (!c) return;
       const rect = c.getBoundingClientRect(); c.width = Math.max(380, Math.floor(rect.width)); c.height = Math.floor(rect.height);
       const ctx = c.getContext('2d'); const w = c.width, h = c.height;
@@ -412,6 +508,10 @@ def render_html_document(
         ctx.fill();
       }});
       drawLegend(ctx, names, palette, M.left + 4, M.top + 14);
+      attachYearTooltip(c, years, (idx) => {{
+        if (tooltipBuilder) return tooltipBuilder(idx);
+        return stackBreakdownLines(stacks, idx, false, 8);
+      }});
     }}
 
     function renderSankey(yearIndex) {{
@@ -449,12 +549,28 @@ def render_html_document(
 
     function renderAll() {{
       const years = payload.charts.years;
-      drawLine('chart-net-worth', years, payload.charts.netWorth, 'Net Worth', '#9a3412');
-      drawLine('chart-income-expenses', years, payload.charts.income.map((v,i)=>v-payload.charts.expenses[i]), 'Income - Expenses', '#166534');
+      drawLine('chart-net-worth', years, payload.charts.netWorth, 'Net Worth', '#9a3412', (idx) => stackBreakdownLines(payload.charts.accountsStacked, idx, false, 10));
+      drawLine('chart-income-expenses', years, payload.charts.income.map((v,i)=>v-payload.charts.expenses[i]), 'Income - Expenses', '#166534', (idx) => {{
+        const income = Number((payload.charts.income || [])[idx] || 0);
+        const expenses = Number((payload.charts.expenses || [])[idx] || 0);
+        const breakdown = payload.charts.expenseBreakdown || {{}};
+        const healthcare = Number((breakdown.healthcare || [])[idx] || 0);
+        const other = Number((breakdown.other || [])[idx] || 0);
+        const realAssets = Number((breakdown.real_assets || [])[idx] || 0);
+        const net = income - expenses;
+        return [
+          `Income: ${{fmtMoney(income)}}`,
+          `Expenses: ${{fmtMoney(expenses)}}`,
+          `Net: ${{fmtSignedMoney(net)}}`,
+          `Healthcare: ${{fmtMoney(healthcare)}}`,
+          `Other expenses: ${{fmtMoney(other)}}`,
+          `Real-asset costs: ${{fmtMoney(realAssets)}}`,
+        ];
+      }});
       drawAreaStack('chart-accounts-stack', years, payload.charts.accountsStacked, 'Net Worth by Account');
       drawBars('chart-account-balance-yearly', years, payload.charts.accountBalances, 'Account Balances by Year');
       drawBarsSigned('chart-account-flow-yearly', years, payload.charts.accountFlowByYear, 'Account Flows by Year');
-      drawLine('chart-account-lines', years, payload.charts.netWorth, 'Total Balance Trend', '#1d4ed8');
+      drawLine('chart-account-lines', years, payload.charts.netWorth, 'Total Balance Trend', '#1d4ed8', (idx) => stackBreakdownLines(payload.charts.accountsStacked, idx, false, 10));
       drawBars('chart-tax', years, payload.charts.taxBurden, 'Tax Burden');
       drawAreaStack('chart-allocation', years, payload.charts.allocation, 'Asset Allocation');
       drawBars('chart-withdrawals', years, payload.charts.withdrawalSources, 'Withdrawal Sources');
@@ -463,13 +579,20 @@ def render_html_document(
         const descEl = document.getElementById('chart-success-desc');
         if (titleEl) titleEl.textContent = 'Probability of Success';
         if (descEl) descEl.textContent = 'Median portfolio value across simulations with success rate.';
-        drawLine('chart-success', years, payload.charts.success.p50, `Success / Median (rate ${{(payload.charts.success.rate||0)*100}}% )`, '#6b21a8');
+        drawLine('chart-success', years, payload.charts.success.p50, `Success / Median (rate ${{(payload.charts.success.rate||0)*100}}% )`, '#6b21a8', (idx) => [
+          `Success rate: ${{((payload.charts.success.rate || 0) * 100).toFixed(1)}}%`,
+          `P10: ${{fmtMoney((payload.charts.success.p10 || [])[idx] || 0)}}`,
+          `P25: ${{fmtMoney((payload.charts.success.p25 || [])[idx] || 0)}}`,
+          `P50: ${{fmtMoney((payload.charts.success.p50 || [])[idx] || 0)}}`,
+          `P75: ${{fmtMoney((payload.charts.success.p75 || [])[idx] || 0)}}`,
+          `P90: ${{fmtMoney((payload.charts.success.p90 || [])[idx] || 0)}}`,
+        ]);
       }} else {{
         const titleEl = document.getElementById('chart-success-title');
         const descEl = document.getElementById('chart-success-desc');
         if (titleEl) titleEl.textContent = 'Net Worth Trend';
         if (descEl) descEl.textContent = 'Total portfolio balance trend over time.';
-        drawLine('chart-success', years, payload.charts.netWorth, `Net Worth Trend`, '#6b21a8');
+        drawLine('chart-success', years, payload.charts.netWorth, `Net Worth Trend`, '#6b21a8', (idx) => stackBreakdownLines(payload.charts.accountsStacked, idx, false, 10));
       }}
 
       const slider = document.getElementById('sankey-year');

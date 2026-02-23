@@ -33,6 +33,11 @@ def _money_cell(value: float, tooltip_lines: list[str]) -> str:
     return f'<td title="{tooltip}">{_money(value)}</td>'
 
 
+def _text_cell(value: str, tooltip_lines: list[str] | None = None) -> str:
+    tooltip = html.escape(_tooltip_text(tooltip_lines or []), quote=True)
+    return f'<td title="{tooltip}">{html.escape(value)}</td>'
+
+
 def _format_signed(value: float) -> str:
     return f"+{_money(value)}" if value > 0 else _money(value)
 
@@ -70,22 +75,81 @@ def _dashboard_cards(result: SimulationResult, detail: EngineResult) -> str:
 
 def _annual_summary_table(result: SimulationResult, detail: EngineResult) -> str:
     by_year = {row.year: row for row in detail.annual}
+    withdrawals_by_year = detail.withdrawal_sources_by_year
+    account_year_end: dict[int, list[tuple[str, float]]] = {}
+    account_contrib_by_year: dict[int, list[tuple[str, float]]] = {}
+    for account_name, rows in detail.account_annual.items():
+        for r in rows:
+            account_year_end.setdefault(r.year, []).append((account_name, r.ending_balance))
+            if abs(r.contributions) > 0.01:
+                account_contrib_by_year.setdefault(r.year, []).append((account_name, r.contributions))
+
     rows: list[str] = []
     for row in result.annual:
         d = by_year.get(row.year)
         taxes = (d.tax_total if d and d.tax_total > 0 else (d.tax_withheld if d else 0.0))
         insolvent = "insolvent" if row.year in result.insolvency_years else ""
         note = "Insolvent" if row.year in result.insolvency_years else ""
+        expense_lines = (
+            [
+                f"Healthcare: {_money(d.healthcare_expenses)}",
+                f"Other expenses: {_money(d.other_expenses)}",
+                f"Real-asset costs: {_money(d.real_asset_expenses)}",
+                f"Total expenses = Healthcare + Other + Real-asset = {_money(row.expenses)}",
+            ]
+            if d
+            else [f"Total expenses: {_money(row.expenses)}"]
+        )
+        if d and d.tax_total > 0:
+            tax_lines = [
+                f"Federal: {_money(d.tax_federal)}",
+                f"State: {_money(d.tax_state)}",
+                f"Capital gains: {_money(d.tax_capital_gains)}",
+                f"NIIT: {_money(d.tax_niit)}",
+                f"AMT: {_money(d.tax_amt)}",
+                f"Penalties: {_money(d.tax_penalties)}",
+                f"Total tax: {_money(d.tax_total)}",
+                f"Withheld: {_money(d.tax_withheld)} | Estimated: {_money(d.tax_estimated_payments)}",
+                f"Settlement payment: {_money(d.tax_payment)} | Refund: {_money(d.tax_refund)}",
+            ]
+        elif d:
+            tax_lines = [
+                f"Tax total was non-positive; table shows withheld tax.",
+                f"Withheld tax: {_money(d.tax_withheld)}",
+            ]
+        else:
+            tax_lines = [f"Taxes: {_money(taxes)}"]
+
+        withdrawal_lines = [f"Total withdrawals: {_money(d.withdrawals if d else 0.0)}"]
+        by_account = sorted((withdrawals_by_year.get(row.year) or {}).items(), key=lambda item: abs(item[1]), reverse=True)
+        if by_account:
+            withdrawal_lines.extend(f"Source {name}: {_money(amount)}" for name, amount in by_account)
+
+        contribution_lines = [f"Total contributions: {_money(d.contributions if d else 0.0)}"]
+        contrib_parts = sorted(account_contrib_by_year.get(row.year, []), key=lambda item: abs(item[1]), reverse=True)
+        if contrib_parts:
+            contribution_lines.extend(f"{name}: {_money(amount)}" for name, amount in contrib_parts[:8])
+            if len(contrib_parts) > 8:
+                contribution_lines.append(f"+{len(contrib_parts) - 8} more accounts")
+
+        net_worth_lines = [f"Net worth at year end: {_money(row.net_worth_end)}"]
+        ends = sorted(account_year_end.get(row.year, []), key=lambda item: abs(item[1]), reverse=True)
+        if ends:
+            shown = ends[:8]
+            net_worth_lines.extend(f"{name}: {_money(amount)}" for name, amount in shown)
+            if len(ends) > 8:
+                net_worth_lines.append(f"+{len(ends) - 8} more accounts")
+
         rows.append(
             "<tr class=\"{}\">".format(insolvent)
-            + f"<td>{row.year}</td>"
-            + f"<td>{_money(row.income)}</td>"
-            + f"<td>{_money(row.expenses)}</td>"
-            + f"<td>{_money(taxes)}</td>"
-            + f"<td>{_money(d.withdrawals if d else 0.0)}</td>"
-            + f"<td>{_money(d.contributions if d else 0.0)}</td>"
-            + f"<td>{_money(row.net_worth_end)}</td>"
-            + f"<td>{html.escape(note)}</td>"
+            + _text_cell(str(row.year), [f"Calendar year {row.year}"])
+            + _money_cell(row.income, [f"Total annual income: {_money(row.income)}"])
+            + _money_cell(row.expenses, expense_lines)
+            + _money_cell(taxes, tax_lines)
+            + _money_cell(d.withdrawals if d else 0.0, withdrawal_lines)
+            + _money_cell(d.contributions if d else 0.0, contribution_lines)
+            + _money_cell(row.net_worth_end, net_worth_lines)
+            + _text_cell(note, [note] if note else ["No special notes for this year."])
             + "</tr>"
         )
 
@@ -105,14 +169,33 @@ def _money_flow_table(detail: EngineResult) -> str:
         taxes = annual.tax_total if annual.tax_total > 0 else annual.tax_withheld
         rows.append(
             "<tr>"
-            + f"<td>{annual.year}</td>"
-            + f"<td>{_money(annual.income)}</td>"
-            + f"<td>{_money(annual.withdrawals)}</td>"
-            + f"<td>{_money(annual.tax_refund)}</td>"
-            + f"<td>{_money(expenses)}</td>"
-            + f"<td>{_money(taxes)}</td>"
-            + f"<td>{_money(annual.contributions)}</td>"
-            + f"<td>{_money(annual.transfers)}</td>"
+            + _text_cell(str(annual.year), [f"Calendar year {annual.year}"])
+            + _money_cell(annual.income, [f"Total annual income: {_money(annual.income)}"])
+            + _money_cell(annual.withdrawals, [f"Total withdrawals from all accounts: {_money(annual.withdrawals)}"])
+            + _money_cell(annual.tax_refund, [f"Year-end tax refund: {_money(annual.tax_refund)}"])
+            + _money_cell(
+                expenses,
+                [
+                    f"Healthcare: {_money(annual.healthcare_expenses)}",
+                    f"Other expenses: {_money(annual.other_expenses)}",
+                    f"Real-asset costs: {_money(annual.real_asset_expenses)}",
+                    f"Total expenses: {_money(expenses)}",
+                ],
+            )
+            + _money_cell(
+                taxes,
+                [
+                    f"Federal: {_money(annual.tax_federal)}",
+                    f"State: {_money(annual.tax_state)}",
+                    f"Capital gains: {_money(annual.tax_capital_gains)}",
+                    f"NIIT: {_money(annual.tax_niit)}",
+                    f"AMT: {_money(annual.tax_amt)}",
+                    f"Penalties: {_money(annual.tax_penalties)}",
+                    f"Tax shown: {_money(taxes)}",
+                ],
+            )
+            + _money_cell(annual.contributions, [f"Total contributions/deposits: {_money(annual.contributions)}"])
+            + _money_cell(annual.transfers, [f"Total recurring transfers: {_money(annual.transfers)}"])
             + "</tr>"
         )
     return (
