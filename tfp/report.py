@@ -192,6 +192,33 @@ def _calculation_log_table(detail: EngineResult) -> str:
     return f'<div class="table-wrap calc-log">{table_html}</div>'
 
 
+def _monthly_tax_table(detail: EngineResult) -> str:
+    rows: list[str] = []
+    for row in detail.monthly:
+        ym = f"{row.year:04d}-{row.month:02d}"
+        reasons = row.calculation_reasons
+        net_tax_paid = row.tax_withheld + row.tax_estimated_payment + row.tax_settlement
+        rows.append(
+            "<tr>"
+            + f"<td>{ym}</td>"
+            + _money_cell(row.tax_fica_withheld, reasons.get("tax_withheld", []))
+            + _money_cell(row.tax_income_withheld, reasons.get("tax_withheld", []))
+            + _money_cell(row.tax_estimated_payment, reasons.get("tax_estimated", []))
+            + _money_cell(row.tax_settlement, reasons.get("tax_settlement", []))
+            + _money_cell(net_tax_paid, reasons.get("tax_settlement", []) + reasons.get("tax_estimated", []))
+            + "</tr>"
+        )
+    table_html = (
+        "<table><thead><tr>"
+        "<th>Month</th><th>FICA Withheld</th><th>Income Tax Withheld</th>"
+        "<th>Estimated Tax Payment</th><th>Year-End Settlement (+pay / -refund)</th><th>Net Tax Cash Flow</th>"
+        "</tr></thead><tbody>"
+        + "".join(rows)
+        + "</tbody></table>"
+    )
+    return f'<div class="table-wrap">{table_html}</div>'
+
+
 def _validation_panel(plan: Plan) -> str:
     validation = validate_plan(plan)
     sanity = check_plan_sanity(plan)
@@ -297,6 +324,7 @@ def render_report(plan: Plan, result: SimulationResult, plan_path: str) -> str:
         account_tables=_account_detail_tables(detail),
         account_balance_table=_account_balance_monthly_table(plan, detail),
         account_flow_table=_account_flow_monthly_table(plan, detail),
+        tax_table=_monthly_tax_table(detail),
         calc_log_table=_calculation_log_table(detail),
         validation_table=_validation_panel(plan),
         payload_json=json.dumps(payload),

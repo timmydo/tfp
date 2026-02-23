@@ -29,6 +29,9 @@ class MonthResult:
     month: int
     income: float
     tax_withheld: float
+    tax_fica_withheld: float
+    tax_income_withheld: float
+    tax_estimated_payment: float
     contributions: float
     transfers: float
     healthcare_expenses: float
@@ -53,6 +56,7 @@ class AnnualResult:
     year: int
     income: float = 0.0
     tax_withheld: float = 0.0
+    tax_estimated_payments: float = 0.0
     contributions: float = 0.0
     transfers: float = 0.0
     healthcare_expenses: float = 0.0
@@ -317,6 +321,7 @@ def run_deterministic(
     irmaa_magi_history: dict[int, float] = {}
     early_withdrawal_penalties: dict[int, float] = {}
     annual_fica_withheld: dict[int, float] = {}
+    annual_estimated_tax_paid: dict[int, float] = {}
     roth_contribution_basis = {
         account.name: max(0.0, float(account.balance))
         for account in plan.accounts
@@ -384,6 +389,7 @@ def run_deterministic(
         # Step 1: Age calculation.
         annual = annual_by_year.setdefault(year, AnnualResult(year=year))
         annual_fica_withheld.setdefault(year, 0.0)
+        annual_estimated_tax_paid.setdefault(year, 0.0)
         if month == 1:
             ytd_wages_by_owner = {"primary": 0.0, "spouse": 0.0}
         for account in plan.accounts:
@@ -395,6 +401,9 @@ def run_deterministic(
 
         month_income = 0.0
         month_withheld = 0.0
+        month_tax_fica_withheld = 0.0
+        month_tax_income_withheld = 0.0
+        month_tax_estimated_payment = 0.0
         month_contributions = 0.0
         month_transfers = 0.0
         month_healthcare = 0.0
@@ -479,6 +488,8 @@ def run_deterministic(
                 balances[cash_account] -= withheld
                 _add_withdrawal(year, cash_account, withheld)
                 month_withheld += withheld
+                month_tax_fica_withheld += fica_withheld
+                month_tax_income_withheld += income_tax_withheld
                 if fica_withheld > 0:
                     _add_calculation_reason("tax_withheld", f"FICA withheld: {income.name}", fica_withheld)
                     _add_account_flow_reason(cash_account, f"FICA withheld: {income.name}", -fica_withheld)
@@ -939,10 +950,104 @@ def run_deterministic(
         if balances[cash_account] < -0.01:
             insolvent = True
 
-        # Step 20: Cost basis updates are handled inline.
-        # Step 21: Monthly recording and annual rollup.
+        # Step 20: Monthly estimated tax payment for non-withheld taxes.
+        ytd_taxable_ordinary = annual.taxable_ordinary_income + month_taxable_ordinary_income
+        ytd_realized_cg = annual.realized_capital_gains + month_realized_cg
+        ytd_qualified_dividends = annual.qualified_dividends + month_qualified_dividends
+        ytd_withheld = annual.tax_withheld + month_withheld
+        annualization = 12.0 / max(1, month)
+        projected_itemized = 0.0
+        projected_state_tax = max(0.0, annual.tax_state)
+        projected_total_tax = 0.0
+        projected_fica = annual_fica_withheld[year] * annualization
+        for _ in range(2):
+            projected_itemized = min(plan.tax_settings.itemized_deductions.salt_cap, projected_state_tax)
+            projected_itemized += max(0.0, plan.tax_settings.itemized_deductions.charitable_contributions)
+            if plan.tax_settings.itemized_deductions.mortgage_interest_deductible:
+                projected_itemized += max(0.0, (annual.mortgage_interest_paid + month_mortgage_interest) * annualization)
+            projected_tax_result = compute_total_tax(
+                YearIncomeSummary(
+                    year=year,
+                    filing_status=plan.filing_status,
+                    state=plan.people.primary.state or "CA",
+                    ordinary_income=ytd_taxable_ordinary * annualization,
+                    capital_gains=ytd_realized_cg * annualization,
+                    qualified_dividends=ytd_qualified_dividends * annualization,
+                    investment_income=0.0,
+                    itemized_deductions=projected_itemized,
+                    withheld_tax=ytd_withheld * annualization,
+                    early_withdrawal_penalty=early_withdrawal_penalties[year] * annualization,
+                ),
+                plan.tax_settings,
+                inflation_rate=inflation_rate,
+            )
+            projected_state_tax = max(0.0, projected_tax_result.state_income_tax)
+            projected_total_tax = projected_tax_result.total_tax
+        projected_settlement = max(
+            0.0,
+            (projected_total_tax + projected_fica) - (ytd_withheld * annualization),
+        )
+        target_estimated_paid = projected_settlement * (month / 12.0)
+        payment_due = max(0.0, target_estimated_paid - annual_estimated_tax_paid[year])
+        if payment_due > 0:
+            if balances[cash_account] < payment_due:
+                remaining, events, gains = cover_shortfall(
+                    shortfall=payment_due - balances[cash_account],
+                    balances=balances,
+                    accounts=accounts_by_name,
+                    strategy=plan.withdrawal_strategy,
+                    cash_account_name=cash_account,
+                    cost_basis=cost_basis,
+                )
+                extra_withdrawals = sum(e.amount for e in events)
+                if extra_withdrawals > 0:
+                    month_withdrawals += extra_withdrawals
+                    month_realized_cg += gains
+                    _add_calculation_reason("withdrawals", "Estimated tax funding withdrawals", extra_withdrawals)
+                    if gains > 0:
+                        _add_calculation_reason("realized_capital_gains", "Realized gains from estimated tax funding", gains)
+                    for event in events:
+                        _add_withdrawal(year, event.account, event.amount)
+                        _add_withdrawal_source(year, event.account, event.amount)
+                        month_withdrawal_sources[event.account] = month_withdrawal_sources.get(event.account, 0.0) + event.amount
+                        _add_contribution(year, cash_account, event.amount)
+                        _add_account_flow_reason(event.account, "Estimated tax funding withdrawal", -event.amount)
+                        _add_account_flow_reason(cash_account, f"Estimated tax funding inflow from {event.account}", event.amount)
+                        event_account = accounts_by_name[event.account]
+                        ordinary_income, penalty = _handle_early_withdrawal_effects(
+                            account=event_account,
+                            amount=event.amount,
+                            owner_ages=owner_ages,
+                        )
+                        month_taxable_ordinary_income += ordinary_income
+                        early_withdrawal_penalties[year] += penalty
+                if remaining > 0.01:
+                    insolvent = True
+            actual_payment = min(payment_due, max(0.0, balances[cash_account]))
+            if actual_payment > 0:
+                balances[cash_account] -= actual_payment
+                _add_withdrawal(year, cash_account, actual_payment)
+                month_tax_estimated_payment += actual_payment
+                _add_calculation_reason(
+                    "tax_estimated",
+                    "Estimated tax payment from projected annual liability",
+                    actual_payment,
+                )
+                _add_calculation_reason(
+                    "tax_estimated",
+                    "Projection basis (annualized YTD): "
+                    f"ordinary {_format_reason_amount(ytd_taxable_ordinary * annualization)}, "
+                    f"cap gains {_format_reason_amount(ytd_realized_cg * annualization)}, "
+                    f"qualified dividends {_format_reason_amount(ytd_qualified_dividends * annualization)}",
+                )
+                _add_account_flow_reason(cash_account, "Estimated tax payment", -actual_payment)
+                annual_estimated_tax_paid[year] += actual_payment
+
+        # Step 21: Cost basis updates are handled inline.
+        # Step 22: Monthly recording and annual rollup.
         annual.income += month_income
         annual.tax_withheld += month_withheld
+        annual.tax_estimated_payments += month_tax_estimated_payment
         annual.contributions += month_contributions
         annual.transfers += month_transfers
         annual.healthcare_expenses += month_healthcare
@@ -989,7 +1094,11 @@ def run_deterministic(
                     inflation_rate=inflation_rate,
                 )
                 estimated_state_tax = max(0.0, tax_result.state_income_tax)
-                settlement = (tax_result.total_tax + annual_fica_withheld[year]) - annual.tax_withheld
+                settlement = (
+                    (tax_result.total_tax + annual_fica_withheld[year])
+                    - annual.tax_withheld
+                    - annual.tax_estimated_payments
+                )
                 if settlement <= 0 or balances[cash_account] >= settlement:
                     break
 
@@ -1092,6 +1201,9 @@ def run_deterministic(
             month=month,
             income=month_income,
             tax_withheld=month_withheld,
+            tax_fica_withheld=month_tax_fica_withheld,
+            tax_income_withheld=month_tax_income_withheld,
+            tax_estimated_payment=month_tax_estimated_payment,
             contributions=month_contributions,
             transfers=month_transfers,
             healthcare_expenses=month_healthcare,

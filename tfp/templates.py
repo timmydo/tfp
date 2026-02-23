@@ -13,6 +13,7 @@ def render_html_document(
     account_tables: str,
     account_balance_table: str,
     account_flow_table: str,
+    tax_table: str,
     calc_log_table: str,
     validation_table: str,
     payload_json: str,
@@ -80,6 +81,7 @@ def render_html_document(
       <button class=\"tab-btn\" data-tab=\"accounts\">Account Details</button>
       <button class=\"tab-btn\" data-tab=\"account-balances\">Account Balance View</button>
       <button class=\"tab-btn\" data-tab=\"account-flows\">Account Flow View</button>
+      <button class=\"tab-btn\" data-tab=\"taxes\">Taxes</button>
       <button class=\"tab-btn\" data-tab=\"calc-log\">Calculation Log</button>
       <button class=\"tab-btn\" data-tab=\"validation\">Plan Validation</button>
     </div>
@@ -175,6 +177,14 @@ def render_html_document(
         <h3 class=\"chart-title\">Monthly Account Flows</h3>
         <p class=\"chart-desc\">Month-over-month change in each account balance (positive = added, negative = removed). Hover a cell for its breakdown.</p>
         {account_flow_table}
+      </div>
+    </section>
+
+    <section class=\"tab\" id=\"tab-taxes\">
+      <div class=\"panel\">
+        <h3 class=\"chart-title\">Monthly Taxes</h3>
+        <p class=\"chart-desc\">Month-by-month tax cash flows. Hover cells for breakdowns and projection basis used for estimated payments.</p>
+        {tax_table}
       </div>
     </section>
 

@@ -179,7 +179,7 @@ def test_shortfall_triggers_withdrawals(tmp_path, sample_plan_dict):
     assert month.realized_capital_gains > 0
 
 
-def test_december_tax_settlement_payment_is_recorded(tmp_path, sample_plan_dict):
+def test_monthly_estimated_tax_payments_reduce_december_settlement(tmp_path, sample_plan_dict):
     data = clone_plan(sample_plan_dict)
     data["plan_settings"]["plan_start"] = "2026-01"
     data["plan_settings"]["plan_end"] = "2026-12"
@@ -214,8 +214,9 @@ def test_december_tax_settlement_payment_is_recorded(tmp_path, sample_plan_dict)
     annual = result.annual[0]
     december = [m for m in result.monthly if m.month == 12][0]
     assert annual.tax_total > annual.tax_withheld
-    assert annual.tax_payment > 0
-    assert december.tax_settlement > 0
+    assert annual.tax_estimated_payments > 0
+    assert any(m.tax_estimated_payment > 0 for m in result.monthly)
+    assert december.tax_settlement >= 0
 
 
 def test_december_tax_refund_is_recorded(tmp_path, sample_plan_dict):
@@ -254,6 +255,7 @@ def test_december_tax_refund_is_recorded(tmp_path, sample_plan_dict):
     december = [m for m in result.monthly if m.month == 12][0]
     assert annual.tax_refund > 0
     assert annual.tax_payment == 0
+    assert annual.tax_estimated_payments == 0
     assert december.tax_settlement < 0
 
 
