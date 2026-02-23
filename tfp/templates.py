@@ -53,6 +53,9 @@ def render_html_document(
     table {{ border-collapse: collapse; width: 100%; font-size: 0.9rem; }}
     th, td {{ border: 1px solid #e9dbc7; padding: 0.35rem 0.45rem; text-align: right; }}
     th:first-child, td:first-child {{ text-align: left; }}
+    .table-wrap {{ width: 100%; max-width: 100%; overflow-x: auto; }}
+    .calc-log table {{ table-layout: fixed; }}
+    .calc-log th, .calc-log td {{ padding: 0.25rem 0.3rem; font-size: 0.78rem; white-space: normal; overflow-wrap: anywhere; }}
     .insolvent {{ background: #ffe3e3; color: var(--warn); font-weight: 700; }}
     .subtle {{ color: var(--muted); font-size: 0.85rem; }}
     input[type=range] {{ width: 100%; }}

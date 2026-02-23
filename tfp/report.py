@@ -153,7 +153,7 @@ def _calculation_log_table(detail: EngineResult) -> str:
             + f"<td>{'YES' if row.insolvent else ''}</td>"
             + "</tr>"
         )
-    return (
+    table_html = (
         "<table><thead><tr>"
         "<th>Month</th><th>Income</th><th>Withholding</th><th>Contrib</th><th>Transfers</th>"
         "<th>Healthcare</th><th>Other Exp</th><th>Withdrawals</th><th>Cap Gains</th><th>Growth</th>"
@@ -162,6 +162,7 @@ def _calculation_log_table(detail: EngineResult) -> str:
         + "".join(rows)
         + "</tbody></table>"
     )
+    return f'<div class="table-wrap calc-log">{table_html}</div>'
 
 
 def _validation_panel(plan: Plan) -> str:
