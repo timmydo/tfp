@@ -88,14 +88,14 @@ def test_sample_plan_deterministic_golden_metrics():
 
     assert round(first.income) == 300000
     assert round(first.expenses) == 212169
-    assert round(first.net_worth_end) == 2526095
+    assert round(first.net_worth_end) == 2504146
 
     assert tenth.year == 2035
-    assert round(tenth.net_worth_end) == 4617834
+    assert round(tenth.net_worth_end) == 4285013
 
     assert round(last.income) == 118257
     assert round(last.expenses) == 531417
-    assert round(last.net_worth_end) == 7372550
+    assert round(last.net_worth_end) == 3263214
 
     assert result.insolvency_years == [2055, 2056, 2057]
 

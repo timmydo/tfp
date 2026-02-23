@@ -1,6 +1,7 @@
 import pytest
 
 from tfp.schema import ItemizedDeductions, TaxSettings
+from tfp.tax_data import CAPITAL_GAINS_BRACKETS, FEDERAL_BRACKETS, FICA_RATES, STANDARD_DEDUCTIONS
 from tfp.tax import (
     YearIncomeSummary,
     compute_fica,
@@ -64,11 +65,11 @@ def test_compute_total_tax_with_overrides():
         settings,
     )
 
-    assert round(result.federal_income_tax, 2) == 34_000.00
-    assert round(result.state_income_tax, 2) == 8_500.00
+    assert round(result.federal_income_tax, 2) == 33_560.00
+    assert round(result.state_income_tax, 2) == 8_390.00
     assert round(result.capital_gains_tax, 2) == 3_000.00
     assert round(result.early_withdrawal_penalty, 2) == 1_000.00
-    assert round(result.total_tax, 2) == 46_500.00
+    assert round(result.total_tax, 2) == 45_950.00
 
 
 def test_niit_uses_combined_investment_base():
@@ -100,6 +101,14 @@ def test_fica_additional_medicare_uses_joint_threshold():
     single = compute_fica(300_000, 0, 2026, filing_status="single")
     mfj = compute_fica(300_000, 0, 2026, filing_status="married_filing_jointly")
     assert mfj < single
+
+
+def test_2026_tax_data_uses_current_baselines():
+    assert FEDERAL_BRACKETS[2026]["single"][1][0] == 50_400.0
+    assert CAPITAL_GAINS_BRACKETS[2026]["single"][0][0] == 50_800.0
+    assert STANDARD_DEDUCTIONS[2026]["single"] == 16_100.0
+    assert STANDARD_DEDUCTIONS[2026]["married_filing_jointly"] == 32_200.0
+    assert FICA_RATES[2026]["social_security_wage_base"] == 184_500.0
 
 
 def test_state_tax_uses_progressive_brackets():

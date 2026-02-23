@@ -19,7 +19,7 @@ from .rmd import execute_rmds
 from .roth import execute_roth_conversions
 from .schema import Account, Expense, Income, Plan
 from .social_security import monthly_social_security_income
-from .tax import YearIncomeSummary, compute_total_tax
+from .tax import YearIncomeSummary, compute_fica, compute_total_tax
 from .withdrawals import cover_shortfall
 
 
@@ -310,6 +310,12 @@ def run_deterministic(
     prior_year_end_balances = {name: balance for name, balance in balances.items()}
     irmaa_magi_history: dict[int, float] = {}
     early_withdrawal_penalties: dict[int, float] = {}
+    annual_fica_withheld: dict[int, float] = {}
+    roth_contribution_basis = {
+        account.name: max(0.0, float(account.balance))
+        for account in plan.accounts
+        if account.type == "roth_ira"
+    }
 
     def _year_account_detail(target_year: int, account_name: str) -> AccountAnnualDetail:
         year_map = account_annual_by_year.setdefault(target_year, {})
@@ -340,8 +346,40 @@ def run_deterministic(
         source_map = withdrawal_sources_by_year.setdefault(target_year, {})
         source_map[account_name] = source_map.get(account_name, 0.0) + amount
 
+    def _record_roth_basis_contribution(account_name: str, amount: float) -> None:
+        if amount <= 0 or account_name not in roth_contribution_basis:
+            return
+        roth_contribution_basis[account_name] += amount
+
+    def _handle_early_withdrawal_effects(
+        *,
+        account: Account,
+        amount: float,
+        owner_ages: dict[str, float],
+    ) -> tuple[float, float]:
+        """Return (ordinary_income_added, early_penalty_added) for a withdrawal event."""
+        if amount <= 0:
+            return 0.0, 0.0
+        owner_age = owner_ages.get(account.owner, 0.0)
+        if account.type in {"401k", "traditional_ira"}:
+            penalty = amount * 0.10 if owner_age < 59.5 else 0.0
+            return amount, penalty
+        if account.type == "roth_ira":
+            basis = roth_contribution_basis.get(account.name, 0.0)
+            earnings_withdrawn = max(0.0, amount - basis)
+            roth_contribution_basis[account.name] = max(0.0, basis - amount)
+            if owner_age < 59.5:
+                return 0.0, earnings_withdrawn * 0.10
+        return 0.0, 0.0
+
+    ytd_wages_by_owner = {"primary": 0.0, "spouse": 0.0}
+
     for year, month, current_index in months:
+        # Step 1: Age calculation.
         annual = annual_by_year.setdefault(year, AnnualResult(year=year))
+        annual_fica_withheld.setdefault(year, 0.0)
+        if month == 1:
+            ytd_wages_by_owner = {"primary": 0.0, "spouse": 0.0}
         for account in plan.accounts:
             _year_account_detail(year, account.name)
         owner_ages = {
@@ -369,7 +407,7 @@ def run_deterministic(
         month_withdrawal_sources: dict[str, float] = {}
         early_withdrawal_penalties.setdefault(year, 0.0)
 
-        # Step 2/4: Income collection and withholding.
+        # Step 2: Income collection.
         income_by_name: dict[str, float] = {}
         for income in _active_income_items(
             plan.income,
@@ -391,13 +429,27 @@ def run_deterministic(
             _add_contribution(year, cash_account, amount)
             month_income += amount
             income_by_name[income.name] = income_by_name.get(income.name, 0.0) + amount
+
+            # Step 3-4: FICA withholding and income tax withholding.
             if income.tax_handling == "withhold" and income.withhold_percent is not None:
                 month_taxable_ordinary_income += amount
-                withheld = amount * income.withhold_percent
+                fica_withheld = compute_fica(
+                    wages=amount,
+                    ytd_wages=ytd_wages_by_owner.get(income.owner, 0.0),
+                    year=year,
+                    inflation_rate=inflation_rate,
+                    filing_status=plan.filing_status,
+                )
+                ytd_wages_by_owner[income.owner] = ytd_wages_by_owner.get(income.owner, 0.0) + amount
+                annual_fica_withheld[year] += fica_withheld
+
+                income_tax_withheld = amount * income.withhold_percent
+                withheld = fica_withheld + income_tax_withheld
                 balances[cash_account] -= withheld
                 _add_withdrawal(year, cash_account, withheld)
                 month_withheld += withheld
 
+        # Step 2: Social Security income collection.
         ss_income, _ = monthly_social_security_income(
             entries=plan.social_security,
             owner_ages=owner_ages,
@@ -410,7 +462,7 @@ def run_deterministic(
             # v1 simplification: estimate 85% of SS benefits as taxable.
             month_taxable_ordinary_income += ss_income * 0.85
 
-        # Step 5-7: Contributions and employer match.
+        # Steps 5-7: Payroll deductions, employer match deposits, other contributions.
         for contribution in plan.contributions:
             if not _occurs_this_month(
                 frequency=contribution.frequency,
@@ -446,6 +498,7 @@ def run_deterministic(
                     month_realized_cg += cost_basis[source].withdraw(amount, source_before)
             balances[dest] += amount
             _add_contribution(year, dest, amount)
+            _record_roth_basis_contribution(dest, amount)
             if accounts_by_name[dest].type == "taxable_brokerage" and dest in cost_basis:
                 cost_basis[dest].add_basis(amount)
             month_contributions += amount
@@ -457,6 +510,7 @@ def run_deterministic(
                 if match_amount > 0:
                     balances[dest] += match_amount
                     _add_contribution(year, dest, match_amount)
+                    _record_roth_basis_contribution(dest, match_amount)
                     if accounts_by_name[dest].type == "taxable_brokerage" and dest in cost_basis:
                         cost_basis[dest].add_basis(match_amount)
                     month_contributions += match_amount
@@ -481,6 +535,7 @@ def run_deterministic(
             balances[transfer.to_account] += amount
             _add_withdrawal(year, transfer.from_account, amount)
             _add_contribution(year, transfer.to_account, amount)
+            _record_roth_basis_contribution(transfer.to_account, amount)
             month_transfers += amount
 
             from_account = accounts_by_name[transfer.from_account]
@@ -492,11 +547,12 @@ def run_deterministic(
             if to_account.type == "taxable_brokerage" and transfer.to_account in cost_basis:
                 cost_basis[transfer.to_account].add_basis(amount)
 
-        # Steps 9-10: Roth conversions and RMD processing.
+        # Step 9 / Step 10: Roth conversions and RMD processing.
         if month == 12 and plan.withdrawal_strategy.rmd_satisfied_first:
+            rmd_destination = plan.rmds.destination_account or cash_account
             rmd_before = {
                 name: balances.get(name, 0.0)
-                for name in set(plan.rmds.accounts + [plan.rmds.destination_account])
+                for name in set(plan.rmds.accounts + [rmd_destination])
             }
             rmd_withdrawn, rmd_ordinary_income = execute_rmds(
                 settings=plan.rmds,
@@ -514,9 +570,10 @@ def run_deterministic(
                         _add_withdrawal(year, account_name, withdrawn)
                         _add_withdrawal_source(year, account_name, withdrawn)
                         month_withdrawal_sources[account_name] = month_withdrawal_sources.get(account_name, 0.0) + withdrawn
-                deposited = max(0.0, balances.get(plan.rmds.destination_account, 0.0) - rmd_before.get(plan.rmds.destination_account, 0.0))
+                deposited = max(0.0, balances.get(rmd_destination, 0.0) - rmd_before.get(rmd_destination, 0.0))
                 if deposited > 0:
-                    _add_contribution(year, plan.rmds.destination_account, deposited)
+                    _add_contribution(year, rmd_destination, deposited)
+                    _record_roth_basis_contribution(rmd_destination, deposited)
             month_withdrawals += rmd_withdrawn
             month_taxable_ordinary_income += rmd_ordinary_income
 
@@ -541,15 +598,17 @@ def run_deterministic(
                 delta = after - before
                 if delta > 0:
                     _add_contribution(year, name, delta)
+                    _record_roth_basis_contribution(name, delta)
                 elif delta < 0:
                     _add_withdrawal(year, name, abs(delta))
         month_transfers += roth_amount
         month_taxable_ordinary_income += roth_ordinary_income
 
         if month == 12 and not plan.withdrawal_strategy.rmd_satisfied_first:
+            rmd_destination = plan.rmds.destination_account or cash_account
             rmd_before = {
                 name: balances.get(name, 0.0)
-                for name in set(plan.rmds.accounts + [plan.rmds.destination_account])
+                for name in set(plan.rmds.accounts + [rmd_destination])
             }
             rmd_withdrawn, rmd_ordinary_income = execute_rmds(
                 settings=plan.rmds,
@@ -567,9 +626,10 @@ def run_deterministic(
                         _add_withdrawal(year, account_name, withdrawn)
                         _add_withdrawal_source(year, account_name, withdrawn)
                         month_withdrawal_sources[account_name] = month_withdrawal_sources.get(account_name, 0.0) + withdrawn
-                deposited = max(0.0, balances.get(plan.rmds.destination_account, 0.0) - rmd_before.get(plan.rmds.destination_account, 0.0))
+                deposited = max(0.0, balances.get(rmd_destination, 0.0) - rmd_before.get(rmd_destination, 0.0))
                 if deposited > 0:
-                    _add_contribution(year, plan.rmds.destination_account, deposited)
+                    _add_contribution(year, rmd_destination, deposited)
+                    _record_roth_basis_contribution(rmd_destination, deposited)
             month_withdrawals += rmd_withdrawn
             month_taxable_ordinary_income += rmd_ordinary_income
 
@@ -637,6 +697,7 @@ def run_deterministic(
             month_mortgage_interest += interest
 
             for maintenance in state.asset.maintenance_expenses:
+                # v1 simplification: maintenance amounts are fixed nominal dollars.
                 if maintenance.frequency == "monthly":
                     month_real_asset_expenses += maintenance.amount
                 elif maintenance.frequency == "annual" and month == 1:
@@ -663,6 +724,7 @@ def run_deterministic(
                 deposit = txn.deposit_to_account or cash_account
                 balances[deposit] += proceeds
                 _add_contribution(year, deposit, proceeds)
+                _record_roth_basis_contribution(deposit, proceeds)
             elif txn.type == "buy_asset":
                 balances[cash_account] -= (txn.amount + txn.fees)
                 _add_withdrawal(year, cash_account, txn.amount + txn.fees)
@@ -671,6 +733,7 @@ def run_deterministic(
                 if txn.deposit_to_account:
                     balances[txn.deposit_to_account] += net
                     _add_contribution(year, txn.deposit_to_account, net)
+                    _record_roth_basis_contribution(txn.deposit_to_account, net)
                 else:
                     balances[cash_account] += net
                     _add_contribution(year, cash_account, net)
@@ -726,10 +789,13 @@ def run_deterministic(
                 month_withdrawal_sources[event.account] = month_withdrawal_sources.get(event.account, 0.0) + event.amount
                 _add_contribution(year, cash_account, event.amount)
                 event_account = accounts_by_name[event.account]
-                if event_account.type in {"401k", "traditional_ira"}:
-                    month_taxable_ordinary_income += event.amount
-                    if owner_ages.get(event_account.owner, 0.0) < 59.5:
-                        early_withdrawal_penalties[year] += event.amount * 0.10
+                ordinary_income, penalty = _handle_early_withdrawal_effects(
+                    account=event_account,
+                    amount=event.amount,
+                    owner_ages=owner_ages,
+                )
+                month_taxable_ordinary_income += ordinary_income
+                early_withdrawal_penalties[year] += penalty
             if remaining > 0:
                 insolvent = True
 
@@ -739,7 +805,7 @@ def run_deterministic(
         if balances[cash_account] < 0:
             insolvent = True
 
-        # Step 20: cost basis updates are handled inline.
+        # Step 20: Cost basis updates are handled inline.
         # Step 21: Monthly recording and annual rollup.
         annual.income += month_income
         annual.tax_withheld += month_withheld
@@ -789,7 +855,7 @@ def run_deterministic(
                     inflation_rate=inflation_rate,
                 )
                 estimated_state_tax = max(0.0, tax_result.state_income_tax)
-                settlement = tax_result.total_tax - annual.tax_withheld
+                settlement = (tax_result.total_tax + annual_fica_withheld[year]) - annual.tax_withheld
                 if settlement <= 0 or balances[cash_account] >= settlement:
                     break
 
@@ -817,11 +883,14 @@ def run_deterministic(
                     month_withdrawal_sources[event.account] = month_withdrawal_sources.get(event.account, 0.0) + event.amount
                     _add_contribution(year, cash_account, event.amount)
                     event_account = accounts_by_name[event.account]
-                    if event_account.type in {"401k", "traditional_ira"}:
-                        month_taxable_ordinary_income += event.amount
-                        annual.taxable_ordinary_income += event.amount
-                        if owner_ages.get(event_account.owner, 0.0) < 59.5:
-                            early_withdrawal_penalties[year] += event.amount * 0.10
+                    ordinary_income, penalty = _handle_early_withdrawal_effects(
+                        account=event_account,
+                        amount=event.amount,
+                        owner_ages=owner_ages,
+                    )
+                    month_taxable_ordinary_income += ordinary_income
+                    annual.taxable_ordinary_income += ordinary_income
+                    early_withdrawal_penalties[year] += penalty
                 if remaining > 0:
                     insolvent = True
                     break
@@ -835,7 +904,7 @@ def run_deterministic(
             annual.tax_niit = tax_result.niit_tax
             annual.tax_amt = tax_result.amt_tax
             annual.tax_penalties = tax_result.early_withdrawal_penalty
-            annual.tax_total = tax_result.total_tax
+            annual.tax_total = tax_result.total_tax + annual_fica_withheld[year]
 
             if settlement > 0:
                 balances[cash_account] -= settlement

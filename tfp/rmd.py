@@ -91,9 +91,10 @@ def execute_rmds(
 
     Returns (total_withdrawals, ordinary_income_added).
     """
-    if not settings.enabled:
+    if not settings.enabled or not settings.destination_account:
         return 0.0, 0.0
 
+    destination = settings.destination_account
     total_withdrawn = 0.0
     for account_name in settings.accounts:
         account = accounts_by_name.get(account_name)
@@ -115,7 +116,7 @@ def execute_rmds(
             continue
 
         balances[account_name] -= amount
-        balances[settings.destination_account] += amount
+        balances[destination] += amount
         total_withdrawn += amount
 
     return total_withdrawn, total_withdrawn

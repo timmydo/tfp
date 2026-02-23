@@ -72,6 +72,6 @@ def test_fill_to_bracket_runs_in_december_only():
         ytd_taxable_ordinary_income=100000.0,
     )
 
-    # 2026 single 22% bracket upper bound is 103,350.
-    assert dec_converted == 3350.0
-    assert dec_ordinary == 3350.0
+    # 2026 single 22% bracket upper bound is 105,700.
+    assert dec_converted == 5700.0
+    assert dec_ordinary == 5700.0

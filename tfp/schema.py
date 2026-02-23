@@ -480,15 +480,15 @@ class RMDSettings:
     enabled: bool
     rmd_start_age: int
     accounts: list[str]
-    destination_account: str
+    destination_account: str | None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], path: str = "rmds") -> "RMDSettings":
         return cls(
-            enabled=bool(_require(data, "enabled", path)),
-            rmd_start_age=int(_require(data, "rmd_start_age", path)),
-            accounts=list(_require(data, "accounts", path)),
-            destination_account=_require(data, "destination_account", path),
+            enabled=bool(_optional(data, "enabled", False)),
+            rmd_start_age=int(_optional(data, "rmd_start_age", 73)),
+            accounts=list(_optional(data, "accounts", [])),
+            destination_account=_optional(data, "destination_account"),
         )
 
 

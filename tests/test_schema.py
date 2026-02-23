@@ -55,3 +55,15 @@ def test_load_plan_allows_missing_purchase_price_for_unsold_asset(tmp_path, samp
 
     plan = load_plan(path)
     assert plan.real_assets[0].purchase_price is None
+
+
+def test_load_plan_defaults_missing_rmds_section(tmp_path, sample_plan_dict):
+    data = clone_plan(sample_plan_dict)
+    data.pop("rmds", None)
+    path = write_plan(tmp_path, data)
+
+    plan = load_plan(path)
+    assert plan.rmds.enabled is False
+    assert plan.rmds.rmd_start_age == 73
+    assert plan.rmds.accounts == []
+    assert plan.rmds.destination_account is None
