@@ -9,7 +9,6 @@ def render_html_document(
     subtitle: str,
     overview_panel: str,
     annual_table: str,
-    flow_table: str,
     account_tables: str,
     account_balance_table: str,
     account_flow_table: str,
@@ -50,6 +49,8 @@ def render_html_document(
     .table-wrap {{ width: 100%; max-width: 100%; overflow-x: auto; }}
     .calc-log table {{ table-layout: fixed; }}
     .calc-log th, .calc-log td {{ padding: 0.25rem 0.3rem; font-size: 0.78rem; white-space: normal; overflow-wrap: anywhere; }}
+    .cell-main {{ font-weight: 700; }}
+    .cell-breakdown {{ margin-top: 0.25rem; font-size: 0.76rem; color: var(--muted); line-height: 1.3; text-align: left; white-space: normal; }}
     .insolvent {{ background: #ffe3e3; color: var(--warn); font-weight: 700; }}
     .subtle {{ color: var(--muted); font-size: 0.85rem; }}
     details {{ margin-top: 0.75rem; }}
@@ -67,8 +68,7 @@ def render_html_document(
     <div class=\"meta\">{subtitle}</div>
     <div class=\"tabs\" id=\"tabs\">
       <button class=\"tab-btn active\" data-tab=\"overview\">Overview</button>
-      <button class=\"tab-btn\" data-tab=\"flows\">Money Flows</button>
-      <button class=\"tab-btn\" data-tab=\"tables\">Totals by Year</button>
+      <button class=\"tab-btn\" data-tab=\"flows\">Annual Financials</button>
       <button class=\"tab-btn\" data-tab=\"accounts\">Account Details</button>
       <button class=\"tab-btn\" data-tab=\"account-balances\">Account Balance View</button>
       <button class=\"tab-btn\" data-tab=\"account-flows\">Account Flow View</button>
@@ -82,11 +82,11 @@ def render_html_document(
     </section>
 
     <section class=\"tab\" id=\"tab-flows\">
-      <div class=\"panel\">{flow_table}</div>
-    </section>
-
-    <section class=\"tab\" id=\"tab-tables\">
-      <div class=\"panel\">{annual_table}</div>
+      <div class=\"panel\">
+        <h3>Annual Financials</h3>
+        <p class=\"subtle\">Consolidated yearly totals with in-table breakdowns for expenses, taxes, withdrawals, contributions, transfers, and net worth.</p>
+        {annual_table}
+      </div>
     </section>
 
     <section class=\"tab\" id=\"tab-accounts\">

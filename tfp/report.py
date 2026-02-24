@@ -8,6 +8,7 @@ import hashlib
 import html
 import json
 from pathlib import Path
+import re
 
 from .engine import EngineResult, run_deterministic
 from .schema import Plan
@@ -31,6 +32,12 @@ def _money_cell(value: float, tooltip_lines: list[str]) -> str:
     return f'<td title="{tooltip}">{_money(value)}</td>'
 
 
+def _money_detail_cell(value: float, detail_lines: list[str]) -> str:
+    detail_html = "<br>".join(html.escape(line) for line in detail_lines if line)
+    detail_block = f'<div class="cell-breakdown">{detail_html}</div>' if detail_html else ""
+    return f'<td>{detail_block}<div class="cell-main">{_money(value)}</div></td>'
+
+
 def _text_cell(value: str, tooltip_lines: list[str] | None = None) -> str:
     tooltip = html.escape(_tooltip_text(tooltip_lines or []), quote=True)
     return f'<td title="{tooltip}">{html.escape(value)}</td>'
@@ -48,6 +55,47 @@ def _account_reason_lines(reason_map: dict[str, float]) -> list[str]:
         if abs(amount) <= 0.01:
             continue
         lines.append(f"{label}: {_format_signed(amount)}")
+    return lines
+
+
+_REASON_AMOUNT_RE = re.compile(r"^(.*): \$(-?[0-9,]+(?:\.[0-9]{2})?)$")
+
+
+def _parse_reason_amount(line: str) -> tuple[str, float] | None:
+    match = _REASON_AMOUNT_RE.match(line)
+    if not match:
+        return None
+    label, amount_str = match.groups()
+    return label, float(amount_str.replace(",", ""))
+
+
+def _yearly_reason_breakdown(detail: EngineResult, metric: str) -> dict[int, dict[str, float]]:
+    by_year: dict[int, dict[str, float]] = {}
+    for row in detail.monthly:
+        entries = row.calculation_reasons.get(metric, [])
+        if not entries:
+            continue
+        year_map = by_year.setdefault(row.year, {})
+        for line in entries:
+            parsed = _parse_reason_amount(line)
+            if parsed is None:
+                continue
+            label, amount = parsed
+            year_map[label] = year_map.get(label, 0.0) + amount
+    return by_year
+
+
+def _breakdown_lines(
+    reason_map: dict[str, float],
+    *,
+    max_lines: int = 8,
+) -> list[str]:
+    if not reason_map:
+        return []
+    ranked = sorted(reason_map.items(), key=lambda item: abs(item[1]), reverse=True)
+    lines = [f"{label}: {_money(amount)}" for label, amount in ranked[:max_lines]]
+    if len(ranked) > max_lines:
+        lines.append(f"+{len(ranked) - max_lines} more components")
     return lines
 
 
@@ -233,9 +281,11 @@ def _overview_panel(plan: Plan, plan_path: str) -> str:
     )
 
 
-def _annual_summary_table(result: SimulationResult, detail: EngineResult) -> str:
+def _annual_financials_table(result: SimulationResult, detail: EngineResult) -> str:
     by_year = {row.year: row for row in detail.annual}
     withdrawals_by_year = detail.withdrawal_sources_by_year
+    expense_reason_by_year = _yearly_reason_breakdown(detail, "other_expenses")
+    transfer_reason_by_year = _yearly_reason_breakdown(detail, "transfers")
     account_year_end: dict[int, list[tuple[str, float]]] = {}
     account_contrib_by_year: dict[int, list[tuple[str, float]]] = {}
     for account_name, rows in detail.account_annual.items():
@@ -250,47 +300,55 @@ def _annual_summary_table(result: SimulationResult, detail: EngineResult) -> str
         taxes = (d.tax_total if d and d.tax_total > 0 else (d.tax_withheld if d else 0.0))
         insolvent = "insolvent" if row.year in result.insolvency_years else ""
         note = "Insolvent" if row.year in result.insolvency_years else ""
-        expense_lines = (
-            [
-                f"Healthcare: {_money(d.healthcare_expenses)}",
-                f"Other expenses: {_money(d.other_expenses)}",
-                f"Real-asset costs: {_money(d.real_asset_expenses)}",
-                f"Total expenses = Healthcare + Other + Real-asset = {_money(row.expenses)}",
-            ]
-            if d
-            else [f"Total expenses: {_money(row.expenses)}"]
-        )
+        expense_lines = [f"Total expenses: {_money(row.expenses)}"]
+        if d:
+            expense_lines.extend(
+                [
+                    f"Healthcare: {_money(d.healthcare_expenses)}",
+                    f"Other expenses: {_money(d.other_expenses)}",
+                    f"Real-asset costs: {_money(d.real_asset_expenses)}",
+                ]
+            )
+        expense_lines.extend(_breakdown_lines(expense_reason_by_year.get(row.year, {})))
         if d and d.tax_total > 0:
             tax_lines = [
+                f"Tax shown: {_money(taxes)}",
                 f"Federal: {_money(d.tax_federal)}",
                 f"State: {_money(d.tax_state)}",
                 f"Capital gains: {_money(d.tax_capital_gains)}",
                 f"NIIT: {_money(d.tax_niit)}",
                 f"AMT: {_money(d.tax_amt)}",
                 f"Penalties: {_money(d.tax_penalties)}",
-                f"Total tax: {_money(d.tax_total)}",
                 f"Withheld: {_money(d.tax_withheld)} | Estimated: {_money(d.tax_estimated_payments)}",
                 f"Settlement payment: {_money(d.tax_payment)} | Refund: {_money(d.tax_refund)}",
             ]
         elif d:
             tax_lines = [
-                f"Tax total was non-positive; table shows withheld tax.",
-                f"Withheld tax: {_money(d.tax_withheld)}",
+                f"Tax shown: {_money(taxes)}",
+                "Tax total was non-positive; showing withheld tax.",
+                f"Withheld: {_money(d.tax_withheld)} | Estimated: {_money(d.tax_estimated_payments)}",
+                f"Settlement payment: {_money(d.tax_payment)} | Refund: {_money(d.tax_refund)}",
             ]
         else:
-            tax_lines = [f"Taxes: {_money(taxes)}"]
+            tax_lines = [f"Tax shown: {_money(taxes)}"]
 
-        withdrawal_lines = [f"Total withdrawals: {_money(d.withdrawals if d else 0.0)}"]
+        withdrawal_total = d.withdrawals if d else 0.0
+        withdrawal_lines = [f"Total withdrawals: {_money(withdrawal_total)}"]
         by_account = sorted((withdrawals_by_year.get(row.year) or {}).items(), key=lambda item: abs(item[1]), reverse=True)
         if by_account:
             withdrawal_lines.extend(f"Source {name}: {_money(amount)}" for name, amount in by_account)
 
-        contribution_lines = [f"Total contributions: {_money(d.contributions if d else 0.0)}"]
+        contribution_total = d.contributions if d else 0.0
+        contribution_lines = [f"Total contributions: {_money(contribution_total)}"]
         contrib_parts = sorted(account_contrib_by_year.get(row.year, []), key=lambda item: abs(item[1]), reverse=True)
         if contrib_parts:
             contribution_lines.extend(f"{name}: {_money(amount)}" for name, amount in contrib_parts[:8])
             if len(contrib_parts) > 8:
                 contribution_lines.append(f"+{len(contrib_parts) - 8} more accounts")
+
+        transfer_total = d.transfers if d else 0.0
+        transfer_lines = [f"Total recurring transfers: {_money(transfer_total)}"]
+        transfer_lines.extend(_breakdown_lines(transfer_reason_by_year.get(row.year, {})))
 
         net_worth_lines = [f"Net worth at year end: {_money(row.net_worth_end)}"]
         ends = sorted(account_year_end.get(row.year, []), key=lambda item: abs(item[1]), reverse=True)
@@ -302,65 +360,21 @@ def _annual_summary_table(result: SimulationResult, detail: EngineResult) -> str
 
         rows.append(
             "<tr class=\"{}\">".format(insolvent)
-            + _text_cell(str(row.year), [f"Calendar year {row.year}"])
-            + _money_cell(row.income, [f"Total annual income: {_money(row.income)}"])
-            + _money_cell(row.expenses, expense_lines)
-            + _money_cell(taxes, tax_lines)
-            + _money_cell(d.withdrawals if d else 0.0, withdrawal_lines)
-            + _money_cell(d.contributions if d else 0.0, contribution_lines)
-            + _money_cell(row.net_worth_end, net_worth_lines)
-            + _text_cell(note, [note] if note else ["No special notes for this year."])
+            + f"<td>{row.year}</td>"
+            + _money_detail_cell(row.income, [f"Total annual income: {_money(row.income)}"])
+            + _money_detail_cell(row.expenses, expense_lines)
+            + _money_detail_cell(taxes, tax_lines)
+            + _money_detail_cell(withdrawal_total, withdrawal_lines)
+            + _money_detail_cell(contribution_total, contribution_lines)
+            + _money_detail_cell(transfer_total, transfer_lines)
+            + _money_detail_cell(row.net_worth_end, net_worth_lines)
+            + f"<td>{html.escape(note)}</td>"
             + "</tr>"
         )
 
     return (
         "<table><thead><tr>"
-        "<th>Year</th><th>Income</th><th>Expenses</th><th>Taxes</th><th>Withdrawals</th><th>Contributions</th><th>Net Worth</th><th>Notes</th>"
-        "</tr></thead><tbody>"
-        + "".join(rows)
-        + "</tbody></table>"
-    )
-
-
-def _money_flow_table(detail: EngineResult) -> str:
-    rows = []
-    for annual in detail.annual:
-        expenses = annual.healthcare_expenses + annual.other_expenses + annual.real_asset_expenses
-        taxes = annual.tax_total if annual.tax_total > 0 else annual.tax_withheld
-        rows.append(
-            "<tr>"
-            + _text_cell(str(annual.year), [f"Calendar year {annual.year}"])
-            + _money_cell(annual.income, [f"Total annual income: {_money(annual.income)}"])
-            + _money_cell(annual.withdrawals, [f"Total withdrawals from all accounts: {_money(annual.withdrawals)}"])
-            + _money_cell(annual.tax_refund, [f"Year-end tax refund: {_money(annual.tax_refund)}"])
-            + _money_cell(
-                expenses,
-                [
-                    f"Healthcare: {_money(annual.healthcare_expenses)}",
-                    f"Other expenses: {_money(annual.other_expenses)}",
-                    f"Real-asset costs: {_money(annual.real_asset_expenses)}",
-                    f"Total expenses: {_money(expenses)}",
-                ],
-            )
-            + _money_cell(
-                taxes,
-                [
-                    f"Federal: {_money(annual.tax_federal)}",
-                    f"State: {_money(annual.tax_state)}",
-                    f"Capital gains: {_money(annual.tax_capital_gains)}",
-                    f"NIIT: {_money(annual.tax_niit)}",
-                    f"AMT: {_money(annual.tax_amt)}",
-                    f"Penalties: {_money(annual.tax_penalties)}",
-                    f"Tax shown: {_money(taxes)}",
-                ],
-            )
-            + _money_cell(annual.contributions, [f"Total contributions/deposits: {_money(annual.contributions)}"])
-            + _money_cell(annual.transfers, [f"Total recurring transfers: {_money(annual.transfers)}"])
-            + "</tr>"
-        )
-    return (
-        "<table><thead><tr>"
-        "<th>Year</th><th>Income</th><th>Withdrawals</th><th>Refunds</th><th>Expenses</th><th>Taxes</th><th>Contributions</th><th>Transfers</th>"
+        "<th>Year</th><th>Income</th><th>Expenses</th><th>Taxes</th><th>Withdrawals</th><th>Contributions</th><th>Transfers</th><th>Net Worth</th><th>Notes</th>"
         "</tr></thead><tbody>"
         + "".join(rows)
         + "</tbody></table>"
@@ -548,8 +562,7 @@ def render_report(plan: Plan, result: SimulationResult, plan_path: str) -> str:
         title=title,
         subtitle=subtitle,
         overview_panel=_overview_panel(plan, plan_path),
-        annual_table=_annual_summary_table(result, detail),
-        flow_table=_money_flow_table(detail),
+        annual_table=_annual_financials_table(result, detail),
         account_tables=_account_detail_tables(detail),
         account_balance_table=_account_balance_monthly_table(plan, detail),
         account_flow_table=_account_flow_monthly_table(plan, detail),

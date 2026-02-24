@@ -612,7 +612,11 @@ def run_deterministic(
             _add_contribution(year, transfer.to_account, amount)
             _record_roth_basis_contribution(transfer.to_account, amount)
             month_transfers += amount
-            _add_calculation_reason("transfers", f"Transfer: {transfer.name}", amount)
+            _add_calculation_reason(
+                "transfers",
+                f"Transfer: {transfer.name} ({transfer.from_account} -> {transfer.to_account})",
+                amount,
+            )
             _add_account_flow_reason(transfer.from_account, f"Transfer out: {transfer.name}", -amount)
             _add_account_flow_reason(transfer.to_account, f"Transfer in: {transfer.name}", amount)
 
