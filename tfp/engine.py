@@ -433,6 +433,8 @@ def run_deterministic(
         insolvent = False
         month_withdrawal_sources: dict[str, float] = {}
         month_calculation_reasons: dict[str, list[str]] = {}
+        month_other_expense_breakdown: dict[str, float] = {}
+        month_real_asset_expense_breakdown: dict[str, float] = {}
         month_account_flow_reasons: dict[str, dict[str, float]] = {
             account.name: {} for account in plan.accounts
         }
@@ -454,6 +456,11 @@ def run_deterministic(
                 return
             account_reasons = month_account_flow_reasons.setdefault(account_name, {})
             account_reasons[label] = account_reasons.get(label, 0.0) + amount
+
+        def _add_expense_breakdown_entry(breakdown: dict[str, float], label: str, amount: float) -> None:
+            if amount <= 0:
+                return
+            breakdown[label] = breakdown.get(label, 0.0) + amount
 
         def _debit_account_up_to(
             account_name: str,
@@ -857,12 +864,22 @@ def run_deterministic(
             month_real_asset_expenses += property_tax
             if property_tax > 0:
                 _add_calculation_reason("other_expenses", f"Property tax: {state.asset.name}", property_tax)
+                _add_expense_breakdown_entry(
+                    month_real_asset_expense_breakdown,
+                    f"Property tax: {state.asset.name}",
+                    property_tax,
+                )
 
             payment, _, interest = mortgage_payment(state)
             month_real_asset_expenses += payment
             month_mortgage_interest += interest
             if payment > 0:
                 _add_calculation_reason("other_expenses", f"Mortgage payment: {state.asset.name}", payment)
+                _add_expense_breakdown_entry(
+                    month_real_asset_expense_breakdown,
+                    f"Mortgage payment: {state.asset.name}",
+                    payment,
+                )
 
             for maintenance in state.asset.maintenance_expenses:
                 # v1 simplification: maintenance amounts are fixed nominal dollars.
@@ -873,11 +890,21 @@ def run_deterministic(
                         maintenance.name,
                         maintenance.amount,
                     )
+                    _add_expense_breakdown_entry(
+                        month_real_asset_expense_breakdown,
+                        f"Maintenance: {state.asset.name} - {maintenance.name}",
+                        maintenance.amount,
+                    )
                 elif maintenance.frequency == "annual" and month == 1:
                     month_real_asset_expenses += maintenance.amount
                     _add_calculation_reason(
                         "other_expenses",
                         maintenance.name,
+                        maintenance.amount,
+                    )
+                    _add_expense_breakdown_entry(
+                        month_real_asset_expense_breakdown,
+                        f"Maintenance: {state.asset.name} - {maintenance.name}",
                         maintenance.amount,
                     )
 
@@ -966,6 +993,7 @@ def run_deterministic(
             )
             month_other_expenses += amount
             _add_calculation_reason("other_expenses", f"Expense: {expense.name}", amount)
+            _add_expense_breakdown_entry(month_other_expense_breakdown, expense.name, amount)
 
         # Step 18: Shortfall detection and withdrawals.
         total_expenses = month_healthcare + month_other_expenses + month_real_asset_expenses
@@ -1008,8 +1036,27 @@ def run_deterministic(
         expense_payment = min(total_expenses, max(0.0, balances[cash_account]))
         if expense_payment > 0:
             balances[cash_account] -= expense_payment
-            _add_withdrawal(year, cash_account, expense_payment, reason="Expenses paid")
-            _add_account_flow_reason(cash_account, "Expenses paid", -expense_payment)
+            remaining_payment = expense_payment
+
+            def _record_cash_outflow(reason_label: str, requested_amount: float) -> None:
+                nonlocal remaining_payment
+                if remaining_payment <= 0 or requested_amount <= 0:
+                    return
+                paid = min(remaining_payment, requested_amount)
+                if paid <= 0:
+                    return
+                _add_withdrawal(year, cash_account, paid, reason=reason_label)
+                _add_account_flow_reason(cash_account, reason_label, -paid)
+                remaining_payment -= paid
+
+            _record_cash_outflow("Healthcare paid from cash", month_healthcare)
+            for label, amount in month_real_asset_expense_breakdown.items():
+                _record_cash_outflow(f"{label} paid from cash", amount)
+            for expense_name, amount in month_other_expense_breakdown.items():
+                _record_cash_outflow(f"Expense paid: {expense_name}", amount)
+
+            if remaining_payment > 0.01:
+                _record_cash_outflow("Other expenses paid from cash", remaining_payment)
         if total_expenses - expense_payment > 0.01:
             insolvent = True
 

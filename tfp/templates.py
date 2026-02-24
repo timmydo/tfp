@@ -80,10 +80,8 @@ def render_html_document(
       <button class=\"tab-btn active\" data-tab=\"overview\">Overview</button>
       <button class=\"tab-btn\" data-tab=\"flows\">Annual Financials</button>
       <button class=\"tab-btn\" data-tab=\"accounts\">Account Details</button>
-      <button class=\"tab-btn\" data-tab=\"account-balances\">Account Balance View</button>
       <button class=\"tab-btn\" data-tab=\"account-flows\">Account Activity View</button>
       <button class=\"tab-btn\" data-tab=\"taxes\">Taxes</button>
-      <button class=\"tab-btn\" data-tab=\"calc-log\">Calculation Log</button>
       <button class=\"tab-btn\" data-tab=\"validation\">Plan Validation</button>
     </div>
 

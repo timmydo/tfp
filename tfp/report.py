@@ -120,8 +120,12 @@ def _withdrawal_breakdown_lines(reason_map: dict[str, float]) -> list[str]:
         elif cleaned.startswith("Contribution: "):
             cleaned = cleaned[len("Contribution: ") :]
             display_amount = -abs(amount)
-        elif cleaned == "Expenses paid":
-            cleaned = "Non-health expenses paid from cash"
+        elif cleaned.startswith("Expense paid: "):
+            cleaned = f"Expense outflow: {cleaned[len('Expense paid: ') :]}"
+        elif cleaned == "Healthcare paid from cash":
+            cleaned = "Healthcare outflow"
+        elif cleaned.endswith(" paid from cash"):
+            cleaned = cleaned[: -len(" paid from cash")] + " outflow"
         elif cleaned == "Tax withholding":
             cleaned = "Payroll tax withholding from income"
         if display_amount < 0:
@@ -483,13 +487,19 @@ def _account_detail_tables(plan: Plan, detail: EngineResult) -> str:
                 contribution_reasons = (
                     detail.account_contribution_reasons_by_year.get(account_name, {}).get(year, {})
                 )
-                detail_lines.extend(_breakdown_lines(contribution_reasons))
+                contribution_lines = _breakdown_lines(contribution_reasons)
+                if contribution_lines:
+                    detail_lines.append("Inflows breakdown:")
+                    detail_lines.extend(contribution_lines)
             if abs(row.withdrawals) > 0.01:
                 detail_lines.append(f"Total outflows (withdrawals/payments): {_money(row.withdrawals)}")
                 withdrawal_reasons = (
                     detail.account_withdrawal_reasons_by_year.get(account_name, {}).get(year, {})
                 )
-                detail_lines.extend(_withdrawal_breakdown_lines(withdrawal_reasons))
+                withdrawal_lines = _withdrawal_breakdown_lines(withdrawal_reasons)
+                if withdrawal_lines:
+                    detail_lines.append("Outflows breakdown:")
+                    detail_lines.extend(withdrawal_lines)
             if abs(row.fees) > 0.01:
                 detail_lines.append(f"Fees: {_money(row.fees)}")
             delta_html = ""

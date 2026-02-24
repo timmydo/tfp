@@ -14,12 +14,14 @@ def test_report_html_includes_required_sections(tmp_path):
     assert "Overview" in text
     assert "Annual Financials" in text
     assert "Account Details" in text
-    assert "Account Balance View" in text
+    assert "Account Balance View" not in text
     assert "Account Activity View" in text
     assert "Taxes" in text
     assert "Calculation Log" in text
     assert "Plan Validation" in text
 
+    assert 'data-tab="account-balances"' not in text
+    assert 'data-tab="calc-log"' not in text
     assert 'id="tab-flows"' in text
     assert 'id="tab-tables"' not in text
     assert 'id="tab-account-balances"' in text
@@ -595,7 +597,8 @@ def test_account_details_withdrawals_include_reason_breakdown(tmp_path, sample_p
 
     text = output_path.read_text(encoding="utf-8")
     assert "Total outflows (withdrawals/payments): $1,000" in text
-    assert "Non-health expenses paid from cash: $1,000" in text
+    assert "Outflows breakdown:" in text
+    assert "Expense outflow: Living costs: $1,000" in text
 
 
 def test_account_details_does_not_show_impossible_withdrawals_for_empty_account(tmp_path, sample_plan_dict):
@@ -765,5 +768,6 @@ def test_account_details_shows_contribution_breakdown_and_negative_contribution_
 
     text = output_path.read_text(encoding="utf-8")
     assert "Total inflows (deposits/contributions): $10,000" in text
+    assert "Inflows breakdown:" in text
     assert "Income: Salary: $10,000" in text
     assert "Primary 401k contribution: -$10,000" in text
