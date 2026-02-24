@@ -410,14 +410,19 @@ def _account_detail_tables(detail: EngineResult) -> str:
             if row is None:
                 cells.append("<td>-</td>")
                 continue
-            detail_lines = [
-                f"Start: {_money(row.starting_balance)}",
-                f"Growth: {_money(row.growth)}",
-                f"Dividends: {_money(row.dividends)}",
-                f"Contrib: {_money(row.contributions)}",
-                f"Withdrawals: {_money(row.withdrawals)}",
-                f"Fees: {_money(row.fees)}",
-            ]
+            detail_lines: list[str] = []
+            if abs(row.starting_balance) > 0.01:
+                detail_lines.append(f"Start: {_money(row.starting_balance)}")
+            if abs(row.growth) > 0.01:
+                detail_lines.append(f"Growth: {_money(row.growth)}")
+            if abs(row.dividends) > 0.01:
+                detail_lines.append(f"Dividends: {_money(row.dividends)}")
+            if abs(row.contributions) > 0.01:
+                detail_lines.append(f"Contrib: {_money(row.contributions)}")
+            if abs(row.withdrawals) > 0.01:
+                detail_lines.append(f"Withdrawals: {_money(row.withdrawals)}")
+            if abs(row.fees) > 0.01:
+                detail_lines.append(f"Fees: {_money(row.fees)}")
             cells.append(_money_detail_cell(row.ending_balance, detail_lines))
         table_rows.append(f"<tr>{''.join(cells)}</tr>")
 
