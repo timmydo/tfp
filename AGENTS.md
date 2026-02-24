@@ -747,22 +747,16 @@ Validation runs before simulation:
 
 The generated HTML file is fully self-contained (inline CSS, inline JS, no external dependencies) and includes:
 
-### Charts & Graphs
+### Tabs and Views
 
-1. **Net worth over time** — stacked area chart by account, showing total and per-account balances
-2. **Income vs. expenses over time** — dual line/bar chart comparing total income to total expenses each year
-3. **Account balances over time** — individual line chart per account
-4. **Tax burden over time** — stacked bar chart showing federal, state, capital gains, NIIT, IRMAA, penalties, and total tax
-5. **Asset allocation over time** — stacked area showing stocks vs. bonds vs. cash across all accounts
-6. **Withdrawal source breakdown** — stacked bar by year showing which accounts are being drawn from
-7. **Money flow diagram** — interactive Sankey-style flow graph with a year slider; sources (income, withdrawals, asset sales) on the left, destinations (expenses, taxes, contributions, savings) on the right
-8. **Probability of success** — (Monte Carlo/Historical modes) distribution chart showing percentage of scenarios where money lasts through the plan
-
-### Tables
-
-9. **Annual summary table** — year-by-year table with columns for: age, income, expenses, taxes, withdrawals, contributions, net worth, and notes (RMDs, SS start, etc.)
-10. **Money flow table** — detailed annual breakdown of all sources and uses of funds, corresponding to the Sankey diagram
-11. **Account detail tables** — per-account year-by-year: starting balance, growth, dividends, contributions, withdrawals, fees, ending balance
+1. **Overview** — key plan inputs (household, plan/simulation settings, accounts, income, expenses, additional settings) plus expandable normalized JSON.
+2. **Annual Financials** — year-by-year consolidated table (income, expenses, taxes, withdrawals, contributions, transfers, net worth, notes) with inline per-cell breakdowns.
+3. **Account Details** — single year-by-account matrix where each account cell shows ending balance with inline breakdown (start, growth, dividends, contributions, withdrawals, fees) when non-zero.
+4. **Account Balance View** — monthly end-of-month balances for each account.
+5. **Account Activity View** — monthly per-account balance deltas with inline per-cell reason breakdowns.
+6. **Taxes** — monthly tax cash-flow table (FICA withheld, income tax withheld, estimated payments, settlement, net tax cash flow) with inline breakdowns.
+7. **Calculation Log** — verbose month-by-month ledger of computed values and withdrawal sources.
+8. **Plan Validation** — schema validation results and non-blocking sanity-check warnings.
 
 ## Tech Stack
 
