@@ -488,7 +488,7 @@ def _account_detail_tables(plan: Plan, detail: EngineResult) -> str:
                 growth_sign = "+" if row.growth >= 0 else "-"
                 detail_lines.append(f"{growth_sign}${abs(row.growth):,.0f} growth")
             if abs(row.dividends) > 0.01:
-                detail_lines.append(f"Dividends: {_money(row.dividends)}")
+                detail_lines.append(f"Dividends generated: {_money(row.dividends)}")
             if abs(row.contributions) > 0.01:
                 contribution_reasons = (
                     detail.account_contribution_reasons_by_year.get(account_name, {}).get(year, {})
