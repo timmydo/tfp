@@ -116,6 +116,20 @@ def _fmt_change(change_over_time: str, change_rate: float | None) -> str:
     return f"{change_over_time} ({_pct(change_rate)})"
 
 
+def _age_years_for_year_end(birthday_ym: str, year: int) -> int:
+    birth_year, _ = birthday_ym.split("-", 1)
+    return max(0, year - int(birth_year))
+
+
+def _year_age_label(plan: Plan, year: int) -> str:
+    primary_age = _age_years_for_year_end(plan.people.primary.birthday, year)
+    spouse = plan.people.spouse
+    if spouse is None:
+        return f"{year} ({primary_age}y)"
+    spouse_age = _age_years_for_year_end(spouse.birthday, year)
+    return f"{year} ({primary_age}y/{spouse_age}y)"
+
+
 def _render_table(headers: list[str], rows: list[list[str]]) -> str:
     head = "".join(f"<th>{html.escape(col)}</th>" for col in headers)
     body_rows = []
@@ -282,7 +296,7 @@ def _overview_panel(plan: Plan, plan_path: str) -> str:
     )
 
 
-def _annual_financials_table(result: SimulationResult, detail: EngineResult) -> str:
+def _annual_financials_table(plan: Plan, result: SimulationResult, detail: EngineResult) -> str:
     by_year = {row.year: row for row in detail.annual}
     withdrawals_by_year = detail.withdrawal_sources_by_year
     income_reason_by_year = _yearly_reason_breakdown(detail, "income")
@@ -369,7 +383,7 @@ def _annual_financials_table(result: SimulationResult, detail: EngineResult) -> 
 
         rows.append(
             "<tr class=\"{}\">".format(insolvent)
-            + f"<td>{row.year}</td>"
+            + f"<td>{html.escape(_year_age_label(plan, row.year))}</td>"
             + _money_detail_cell(row.income, income_lines)
             + _money_detail_cell(row.expenses, expense_lines)
             + _money_detail_cell(taxes, tax_lines)
@@ -383,14 +397,14 @@ def _annual_financials_table(result: SimulationResult, detail: EngineResult) -> 
 
     return (
         "<table><thead><tr>"
-        "<th>Year</th><th>Income</th><th>Expenses</th><th>Taxes</th><th>Withdrawals</th><th>Contributions</th><th>Transfers</th><th>Net Worth</th><th>Notes</th>"
+        "<th>Year (Age)</th><th>Income</th><th>Expenses</th><th>Taxes</th><th>Withdrawals</th><th>Contributions</th><th>Transfers</th><th>Net Worth</th><th>Notes</th>"
         "</tr></thead><tbody>"
         + "".join(rows)
         + "</tbody></table>"
     )
 
 
-def _account_detail_tables(detail: EngineResult) -> str:
+def _account_detail_tables(plan: Plan, detail: EngineResult) -> str:
     account_names = sorted(detail.account_annual)
     if not account_names:
         return "<p class=\"subtle\">No account annual details were generated.</p>"
@@ -404,7 +418,7 @@ def _account_detail_tables(detail: EngineResult) -> str:
 
     table_rows: list[str] = []
     for year in years:
-        cells: list[str] = [f"<td>{year}</td>"]
+        cells: list[str] = [f"<td>{html.escape(_year_age_label(plan, year))}</td>"]
         for account_name in account_names:
             row = by_account_year.get(account_name, {}).get(year)
             if row is None:
@@ -427,7 +441,7 @@ def _account_detail_tables(detail: EngineResult) -> str:
         table_rows.append(f"<tr>{''.join(cells)}</tr>")
 
     table_html = (
-        "<table><thead><tr><th>Year</th>"
+        "<table><thead><tr><th>Year (Age)</th>"
         + header
         + "</tr></thead><tbody>"
         + "".join(table_rows)
@@ -589,8 +603,8 @@ def render_report(plan: Plan, result: SimulationResult, plan_path: str) -> str:
         title=title,
         subtitle=subtitle,
         overview_panel=_overview_panel(plan, plan_path),
-        annual_table=_annual_financials_table(result, detail),
-        account_tables=_account_detail_tables(detail),
+        annual_table=_annual_financials_table(plan, result, detail),
+        account_tables=_account_detail_tables(plan, detail),
         account_balance_table=_account_balance_monthly_table(plan, detail),
         account_flow_table=_account_flow_monthly_table(plan, detail),
         tax_table=_monthly_tax_table(detail),
