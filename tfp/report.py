@@ -32,10 +32,10 @@ def _money_cell(value: float, tooltip_lines: list[str]) -> str:
     return f'<td title="{tooltip}">{_money(value)}</td>'
 
 
-def _money_detail_cell(value: float, detail_lines: list[str]) -> str:
+def _money_detail_cell(value: float, detail_lines: list[str], pre_main_html: str = "") -> str:
     detail_html = "<br>".join(html.escape(line) for line in detail_lines if line)
     detail_block = f'<div class="cell-breakdown">{detail_html}</div>' if detail_html else ""
-    return f'<td>{detail_block}<div class="cell-main">{_money(value)}</div></td>'
+    return f'<td>{detail_block}{pre_main_html}<div class="cell-main">{_money(value)}</div></td>'
 
 
 def _text_cell(value: str, tooltip_lines: list[str] | None = None) -> str:
@@ -439,6 +439,7 @@ def _account_detail_tables(plan: Plan, detail: EngineResult) -> str:
     header = "".join(f"<th>{html.escape(name)}</th>" for name in account_names)
 
     table_rows: list[str] = []
+    prev_ending_balance: dict[str, float] = {}
     for year in years:
         cells: list[str] = [f"<td>{html.escape(_year_age_label(plan, year))}</td>"]
         for account_name in account_names:
@@ -459,7 +460,12 @@ def _account_detail_tables(plan: Plan, detail: EngineResult) -> str:
                 detail_lines.append(f"Withdrawals: {_money(row.withdrawals)}")
             if abs(row.fees) > 0.01:
                 detail_lines.append(f"Fees: {_money(row.fees)}")
-            cells.append(_money_detail_cell(row.ending_balance, detail_lines))
+            delta_html = ""
+            if account_name in prev_ending_balance:
+                delta = row.ending_balance - prev_ending_balance[account_name]
+                delta_html = f'<div class="cell-delta">{_format_signed(delta)}</div>'
+            cells.append(_money_detail_cell(row.ending_balance, detail_lines, pre_main_html=delta_html))
+            prev_ending_balance[account_name] = row.ending_balance
         table_rows.append(f"<tr>{''.join(cells)}</tr>")
 
     table_html = (

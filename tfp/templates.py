@@ -50,6 +50,7 @@ def render_html_document(
     .calc-log table {{ table-layout: fixed; }}
     .calc-log th, .calc-log td {{ padding: 0.25rem 0.3rem; font-size: 0.78rem; white-space: normal; overflow-wrap: anywhere; }}
     .cell-main {{ font-weight: 700; }}
+    .cell-delta {{ font-size: 0.8em; color: var(--muted); }}
     .cell-breakdown {{ margin-top: 0.25rem; font-size: 0.76rem; color: var(--muted); line-height: 1.3; text-align: left; white-space: normal; }}
     .insolvent {{ background: #ffe3e3; color: var(--warn); font-weight: 700; }}
     .subtle {{ color: var(--muted); font-size: 0.85rem; }}

@@ -106,6 +106,21 @@ def test_insolvency_years_are_highlighted_in_report(tmp_path, sample_plan_dict):
     assert "class=\"insolvent\"" in text
 
 
+def test_account_details_shows_prior_year_delta_before_balance(tmp_path, sample_plan_dict):
+    data = clone_plan(sample_plan_dict)
+    data["plan_settings"]["plan_start"] = "2026-01"
+    data["plan_settings"]["plan_end"] = "2027-12"
+
+    plan_path = write_plan(tmp_path, data)
+    output_path = tmp_path / "report.html"
+    code = main([str(plan_path), "--mode", "deterministic", "-o", str(output_path)])
+
+    assert code == 0
+    text = output_path.read_text(encoding="utf-8")
+    assert 'class="cell-delta"' in text
+    assert re.search(r'class="cell-delta">[+\-]?\$[0-9,]+</div><div class="cell-main">\$[0-9,]+</div>', text)
+
+
 def test_account_balance_view_chart_and_monthly_table_values(tmp_path, sample_plan_dict):
     data = clone_plan(sample_plan_dict)
     data["plan_settings"]["plan_start"] = "2026-01"
