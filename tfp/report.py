@@ -105,6 +105,17 @@ def _breakdown_lines(
     return lines
 
 
+def _contribution_breakdown_lines(reason_map: dict[str, float]) -> list[str]:
+    if not reason_map:
+        return []
+    non_zero = [(label, amount) for label, amount in reason_map.items() if abs(amount) > 0.01]
+    ranked = sorted(non_zero, key=lambda item: abs(item[1]), reverse=True)
+    lines: list[str] = []
+    for label, amount in ranked:
+        lines.append(f"+${abs(amount):,.0f} {label}")
+    return lines
+
+
 def _withdrawal_breakdown_lines(reason_map: dict[str, float]) -> list[str]:
     if not reason_map:
         return []
@@ -113,26 +124,21 @@ def _withdrawal_breakdown_lines(reason_map: dict[str, float]) -> list[str]:
     lines: list[str] = []
     for label, amount in ranked:
         cleaned = label
-        display_amount = amount
         if cleaned.startswith("Contribution out: "):
             cleaned = cleaned[len("Contribution out: ") :]
-            display_amount = -abs(amount)
         elif cleaned.startswith("Contribution: "):
             cleaned = cleaned[len("Contribution: ") :]
-            display_amount = -abs(amount)
         elif cleaned.startswith("Expense paid: "):
-            cleaned = f"Expense outflow: {cleaned[len('Expense paid: ') :]}"
+            cleaned = cleaned[len("Expense paid: ") :]
+        elif cleaned.startswith("Maintenance: ") and " - " in cleaned:
+            cleaned = cleaned.split(" - ", 1)[1]
         elif cleaned == "Healthcare paid from cash":
-            cleaned = "Healthcare outflow"
+            cleaned = "Healthcare"
         elif cleaned.endswith(" paid from cash"):
-            cleaned = cleaned[: -len(" paid from cash")] + " outflow"
+            cleaned = cleaned[: -len(" paid from cash")]
         elif cleaned == "Tax withholding":
-            cleaned = "Payroll tax withholding from income"
-        if display_amount < 0:
-            amount_text = f"-${abs(display_amount):,.0f}"
-        else:
-            amount_text = _money(display_amount)
-        lines.append(f"{cleaned}: {amount_text}")
+            cleaned = "Tax withholding"
+        lines.append(f"-${abs(amount):,.0f} {cleaned}")
     return lines
 
 
@@ -479,26 +485,23 @@ def _account_detail_tables(plan: Plan, detail: EngineResult) -> str:
             if abs(row.starting_balance) > 0.01:
                 detail_lines.append(f"Start: {_money(row.starting_balance)}")
             if abs(row.growth) > 0.01:
-                detail_lines.append(f"Growth: {_money(row.growth)}")
+                growth_sign = "+" if row.growth >= 0 else "-"
+                detail_lines.append(f"{growth_sign}${abs(row.growth):,.0f} growth")
             if abs(row.dividends) > 0.01:
                 detail_lines.append(f"Dividends: {_money(row.dividends)}")
             if abs(row.contributions) > 0.01:
-                detail_lines.append(f"Total inflows (deposits/contributions): {_money(row.contributions)}")
                 contribution_reasons = (
                     detail.account_contribution_reasons_by_year.get(account_name, {}).get(year, {})
                 )
-                contribution_lines = _breakdown_lines(contribution_reasons)
+                contribution_lines = _contribution_breakdown_lines(contribution_reasons)
                 if contribution_lines:
-                    detail_lines.append("Inflows breakdown:")
                     detail_lines.extend(contribution_lines)
             if abs(row.withdrawals) > 0.01:
-                detail_lines.append(f"Total outflows (withdrawals/payments): {_money(row.withdrawals)}")
                 withdrawal_reasons = (
                     detail.account_withdrawal_reasons_by_year.get(account_name, {}).get(year, {})
                 )
                 withdrawal_lines = _withdrawal_breakdown_lines(withdrawal_reasons)
                 if withdrawal_lines:
-                    detail_lines.append("Outflows breakdown:")
                     detail_lines.extend(withdrawal_lines)
             if abs(row.fees) > 0.01:
                 detail_lines.append(f"Fees: {_money(row.fees)}")
