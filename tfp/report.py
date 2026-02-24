@@ -120,6 +120,10 @@ def _withdrawal_breakdown_lines(reason_map: dict[str, float]) -> list[str]:
         elif cleaned.startswith("Contribution: "):
             cleaned = cleaned[len("Contribution: ") :]
             display_amount = -abs(amount)
+        elif cleaned == "Expenses paid":
+            cleaned = "Non-health expenses paid from cash"
+        elif cleaned == "Tax withholding":
+            cleaned = "Payroll tax withholding from income"
         if display_amount < 0:
             amount_text = f"-${abs(display_amount):,.0f}"
         else:
@@ -475,13 +479,13 @@ def _account_detail_tables(plan: Plan, detail: EngineResult) -> str:
             if abs(row.dividends) > 0.01:
                 detail_lines.append(f"Dividends: {_money(row.dividends)}")
             if abs(row.contributions) > 0.01:
-                detail_lines.append(f"Contrib: {_money(row.contributions)}")
+                detail_lines.append(f"Total inflows (deposits/contributions): {_money(row.contributions)}")
                 contribution_reasons = (
                     detail.account_contribution_reasons_by_year.get(account_name, {}).get(year, {})
                 )
                 detail_lines.extend(_breakdown_lines(contribution_reasons))
             if abs(row.withdrawals) > 0.01:
-                detail_lines.append(f"Withdrawals: {_money(row.withdrawals)}")
+                detail_lines.append(f"Total outflows (withdrawals/payments): {_money(row.withdrawals)}")
                 withdrawal_reasons = (
                     detail.account_withdrawal_reasons_by_year.get(account_name, {}).get(year, {})
                 )

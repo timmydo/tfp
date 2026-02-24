@@ -31,22 +31,27 @@ def render_html_document(
       --line: #d7c7af;
       --brand: #9a3412;
       --warn: #991b1b;
+      --tabs-sticky-top: 0rem;
+      --tabs-height: 2.5rem;
+      --panel-title-height: 2.25rem;
     }}
     * {{ box-sizing: border-box; }}
     body {{ margin: 0; font-family: 'Trebuchet MS', 'Segoe UI', sans-serif; color: var(--ink); background: radial-gradient(circle at top right, #f9d8b4 0, var(--bg) 45%); }}
-    .wrap {{ max-width: 1280px; margin: 0 auto; padding: 1rem; }}
+    .wrap {{ width: 100%; margin: 0 auto; padding: 1rem; }}
     h1 {{ margin: 0.1rem 0 0.25rem; font-size: 1.9rem; }}
     .meta {{ color: var(--muted); font-size: 0.95rem; margin-bottom: 0.8rem; }}
-    .tabs {{ display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0; }}
+    .tabs {{ display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0; position: sticky; top: var(--tabs-sticky-top); z-index: 5; background: var(--bg); padding: 0.4rem 0; }}
     .tab-btn {{ border: 1px solid var(--line); background: #fff; padding: 0.45rem 0.75rem; cursor: pointer; border-radius: 999px; font-weight: 700; }}
     .tab-btn.active {{ background: var(--brand); color: #fff; border-color: var(--brand); }}
     .tab {{ display: none; }}
     .tab.active {{ display: block; }}
     .panel {{ background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 0.85rem; margin-bottom: 0.85rem; }}
+    .panel > h3 {{ position: sticky; top: calc(var(--tabs-sticky-top) + var(--tabs-height)); z-index: 4; background: var(--panel); margin-top: 0; padding: 0.25rem 0; }}
     table {{ border-collapse: collapse; width: 100%; font-size: 0.9rem; }}
     th, td {{ border: 1px solid #e9dbc7; padding: 0.35rem 0.45rem; text-align: right; }}
     th:first-child, td:first-child {{ text-align: left; }}
-    .table-wrap {{ width: 100%; max-width: 100%; overflow-x: auto; }}
+    .table-wrap {{ width: 100%; max-width: 100%; overflow: visible; }}
+    .table-wrap thead th {{ position: sticky; top: calc(var(--tabs-sticky-top) + var(--tabs-height) + var(--panel-title-height)); z-index: 3; background: #fff7eb; }}
     .calc-log table {{ table-layout: fixed; }}
     .calc-log th, .calc-log td {{ padding: 0.25rem 0.3rem; font-size: 0.78rem; white-space: normal; overflow-wrap: anywhere; }}
     .cell-main {{ font-weight: 700; }}
@@ -60,6 +65,10 @@ def render_html_document(
     @media (max-width: 700px) {{
       h1 {{ font-size: 1.5rem; }}
       .tab-btn {{ font-size: 0.9rem; }}
+      .tabs {{ position: static; padding: 0; }}
+      .panel > h3 {{ position: static; }}
+      .table-wrap {{ overflow-x: auto; overflow-y: visible; }}
+      .table-wrap thead th {{ position: static; }}
     }}
   </style>
 </head>

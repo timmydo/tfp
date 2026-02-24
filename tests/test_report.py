@@ -594,8 +594,8 @@ def test_account_details_withdrawals_include_reason_breakdown(tmp_path, sample_p
     assert code == 0
 
     text = output_path.read_text(encoding="utf-8")
-    assert "Withdrawals: $1,000" in text
-    assert "Expenses paid: $1,000" in text
+    assert "Total outflows (withdrawals/payments): $1,000" in text
+    assert "Non-health expenses paid from cash: $1,000" in text
 
 
 def test_account_details_does_not_show_impossible_withdrawals_for_empty_account(tmp_path, sample_plan_dict):
@@ -764,6 +764,6 @@ def test_account_details_shows_contribution_breakdown_and_negative_contribution_
     assert code == 0
 
     text = output_path.read_text(encoding="utf-8")
-    assert "Contrib: $10,000" in text
+    assert "Total inflows (deposits/contributions): $10,000" in text
     assert "Income: Salary: $10,000" in text
     assert "Primary 401k contribution: -$10,000" in text
