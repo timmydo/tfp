@@ -79,8 +79,8 @@ def render_html_document(
     <div class=\"tabs\" id=\"tabs\">
       <button class=\"tab-btn active\" data-tab=\"overview\">Overview</button>
       <button class=\"tab-btn\" data-tab=\"flows\">Annual Financials</button>
-      <button class=\"tab-btn\" data-tab=\"accounts\">Account Details</button>
-      <button class=\"tab-btn\" data-tab=\"account-flows\">Account Activity View</button>
+      <button class=\"tab-btn\" data-tab=\"accounts\">Account Details (By Year)</button>
+      <button class=\"tab-btn\" data-tab=\"account-flows\">Account Details (By Month)</button>
       <button class=\"tab-btn\" data-tab=\"taxes\">Taxes</button>
       <button class=\"tab-btn\" data-tab=\"validation\">Plan Validation</button>
     </div>
@@ -98,7 +98,11 @@ def render_html_document(
     </section>
 
     <section class=\"tab\" id=\"tab-accounts\">
-      <div class=\"panel\">{account_tables}</div>
+      <div class=\"panel\">
+        <h3>Account Details (By Year)</h3>
+        <p class=\"subtle\">Year-end balances for each account, with per-cell breakdown details and year-over-year change.</p>
+        {account_tables}
+      </div>
     </section>
 
     <section class=\"tab\" id=\"tab-account-balances\">
@@ -111,8 +115,8 @@ def render_html_document(
 
     <section class=\"tab\" id=\"tab-account-flows\">
       <div class=\"panel\">
-        <h3>Monthly Account Activity</h3>
-        <p class=\"subtle\">Month-over-month change in each account balance (positive = added, negative = removed), with per-cell breakdown details shown inline.</p>
+        <h3>Account Details (By Month)</h3>
+        <p class=\"subtle\">End-of-month balances for each account, with net monthly change shown above the balance and detailed breakdown lines inline.</p>
         {account_flow_table}
       </div>
     </section>

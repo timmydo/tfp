@@ -54,7 +54,13 @@ def _account_reason_lines(reason_map: dict[str, float]) -> list[str]:
     for label, amount in sorted(reason_map.items(), key=lambda item: abs(item[1]), reverse=True):
         if abs(amount) <= 0.01:
             continue
-        lines.append(f"{label}: {_format_signed(amount)}")
+        cleaned = label
+        if cleaned.startswith("Transfer in: "):
+            cleaned = f"Transfer: {cleaned[len('Transfer in: '):]}"
+        elif cleaned.startswith("Transfer out: "):
+            cleaned = f"Transfer: {cleaned[len('Transfer out: '):]}"
+        sign = "+" if amount >= 0 else "-"
+        lines.append(f"{sign}${abs(amount):,.0f} {cleaned}")
     return lines
 
 
@@ -181,6 +187,33 @@ def _year_age_label(plan: Plan, year: int) -> str:
         return f"{year} ({primary_age}y)"
     spouse_age = _age_years_for_year_end(spouse.birthday, year)
     return f"{year} ({primary_age}y/{spouse_age}y)"
+
+
+def _account_display_order(plan: Plan, annual_account_names: set[str] | None = None) -> list[str]:
+    accounts_by_name = {account.name: account for account in plan.accounts}
+    ordered: list[str] = []
+
+    strategy = plan.withdrawal_strategy
+    if strategy.use_account_specific and strategy.account_specific_order:
+        for name in strategy.account_specific_order:
+            if name in accounts_by_name and name not in ordered:
+                ordered.append(name)
+    elif strategy.order:
+        for account_type in strategy.order:
+            for account in plan.accounts:
+                if account.type == account_type and account.name not in ordered:
+                    ordered.append(account.name)
+
+    for account in plan.accounts:
+        if account.name not in ordered:
+            ordered.append(account.name)
+
+    if annual_account_names:
+        for name in sorted(annual_account_names):
+            if name not in ordered:
+                ordered.append(name)
+
+    return ordered
 
 
 def _render_table(headers: list[str], rows: list[list[str]]) -> str:
@@ -461,7 +494,7 @@ def _annual_financials_table(plan: Plan, result: SimulationResult, detail: Engin
 
 
 def _account_detail_tables(plan: Plan, detail: EngineResult) -> str:
-    account_names = sorted(detail.account_annual)
+    account_names = _account_display_order(plan, set(detail.account_annual))
     if not account_names:
         return "<p class=\"subtle\">No account annual details were generated.</p>"
 
@@ -635,7 +668,7 @@ def _account_balance_monthly_table(plan: Plan, detail: EngineResult) -> str:
 
 
 def _account_flow_monthly_table(plan: Plan, detail: EngineResult) -> str:
-    account_names = [account.name for account in plan.accounts]
+    account_names = _account_display_order(plan)
     prev_balances = {account.name: float(account.balance) for account in plan.accounts}
     header_cells = "".join(f"<th>{html.escape(name)}</th>" for name in account_names)
 
@@ -648,7 +681,8 @@ def _account_flow_monthly_table(plan: Plan, detail: EngineResult) -> str:
             delta = current - prev_balances.get(name, 0.0)
             prev_balances[name] = current
             detail_lines = _account_reason_lines(month.account_flow_reasons.get(name, {}))
-            cells.append(_money_detail_cell(delta, detail_lines))
+            delta_html = f'<div class="cell-delta">{_format_signed(delta)}</div>'
+            cells.append(_money_detail_cell(current, detail_lines, pre_main_html=delta_html))
         rows.append(f"<tr><td>{ym}</td>{''.join(cells)}</tr>")
 
     table_html = (

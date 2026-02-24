@@ -13,9 +13,9 @@ def test_report_html_includes_required_sections(tmp_path):
 
     assert "Overview" in text
     assert "Annual Financials" in text
-    assert "Account Details" in text
+    assert "Account Details (By Year)" in text
     assert "Account Balance View" not in text
-    assert "Account Activity View" in text
+    assert "Account Details (By Month)" in text
     assert "Taxes" in text
     assert "Calculation Log" in text
     assert "Plan Validation" in text
@@ -285,13 +285,108 @@ def test_account_flow_view_chart_and_monthly_table_values(tmp_path, sample_plan_
     assert code == 0
 
     text = output_path.read_text(encoding="utf-8")
-    assert re.search(r"<td>2026-01</td>[\s\S]*?<div class=\"cell-main\">\$-400</div>[\s\S]*?<div class=\"cell-main\">\$300</div>", text)
-    assert re.search(r"<td>2026-02</td>[\s\S]*?<div class=\"cell-main\">\$-100</div>[\s\S]*?<div class=\"cell-main\">\$0</div>", text)
-    assert re.search(r"<td>2026-03</td>[\s\S]*?<div class=\"cell-main\">\$-100</div>[\s\S]*?<div class=\"cell-main\">\$0</div>", text)
-    assert "Transfer out: Move to brokerage: $-300" in text
-    assert "Transfer in: Move to brokerage: +$300" in text
+    assert re.search(
+        r"<td>2026-01</td>[\s\S]*?<div class=\"cell-delta\">\$-400</div><div class=\"cell-main\">\$600</div>"
+        r"[\s\S]*?<div class=\"cell-delta\">\+\$300</div><div class=\"cell-main\">\$2,300</div>",
+        text,
+    )
+    assert re.search(
+        r"<td>2026-02</td>[\s\S]*?<div class=\"cell-delta\">\$-100</div><div class=\"cell-main\">\$500</div>"
+        r"[\s\S]*?<div class=\"cell-delta\">\$0</div><div class=\"cell-main\">\$2,300</div>",
+        text,
+    )
+    assert re.search(
+        r"<td>2026-03</td>[\s\S]*?<div class=\"cell-delta\">\$-100</div><div class=\"cell-main\">\$400</div>"
+        r"[\s\S]*?<div class=\"cell-delta\">\$0</div><div class=\"cell-main\">\$2,300</div>",
+        text,
+    )
+    assert "-$300 Transfer: Move to brokerage" in text
+    assert "+$300 Transfer: Move to brokerage" in text
 
     assert "const payload =" not in text
+
+
+def test_account_details_views_use_withdrawal_order_for_headers(tmp_path, sample_plan_dict):
+    data = clone_plan(sample_plan_dict)
+    data["plan_settings"]["plan_start"] = "2026-01"
+    data["plan_settings"]["plan_end"] = "2026-12"
+    data["accounts"] = [
+        {
+            "name": "Brokerage",
+            "type": "taxable_brokerage",
+            "owner": "primary",
+            "balance": 5000,
+            "cost_basis": 5000,
+            "growth_rate": 0.0,
+            "dividend_yield": 0.0,
+            "dividend_tax_treatment": "capital_gains",
+            "reinvest_dividends": True,
+            "bond_allocation_percent": 0,
+            "yearly_fees": 0.0,
+            "allow_withdrawals": True,
+        },
+        {
+            "name": "Cash",
+            "type": "cash",
+            "owner": "primary",
+            "balance": 1000,
+            "cost_basis": None,
+            "growth_rate": 0.0,
+            "dividend_yield": 0.0,
+            "dividend_tax_treatment": "tax_free",
+            "reinvest_dividends": False,
+            "bond_allocation_percent": 100,
+            "yearly_fees": 0.0,
+            "allow_withdrawals": True,
+        },
+        {
+            "name": "IRA",
+            "type": "traditional_ira",
+            "owner": "primary",
+            "balance": 10000,
+            "cost_basis": None,
+            "growth_rate": 0.0,
+            "dividend_yield": 0.0,
+            "dividend_tax_treatment": "tax_free",
+            "reinvest_dividends": True,
+            "bond_allocation_percent": 0,
+            "yearly_fees": 0.0,
+            "allow_withdrawals": True,
+        },
+    ]
+    data["income"] = []
+    data["expenses"] = []
+    data["contributions"] = []
+    data["transfers"] = []
+    data["transactions"] = []
+    data["real_assets"] = []
+    data["healthcare"]["pre_medicare"] = []
+    data["healthcare"]["post_medicare"] = []
+    data["social_security"] = []
+    data["roth_conversions"] = []
+    data["rmds"] = {
+        "enabled": False,
+        "rmd_start_age": 73,
+        "accounts": [],
+        "destination_account": "Cash",
+    }
+    data["withdrawal_strategy"] = {
+        "order": ["cash", "traditional_ira", "taxable_brokerage"],
+        "account_specific_order": [],
+        "use_account_specific": False,
+        "rmd_satisfied_first": True,
+    }
+
+    plan_path = write_plan(tmp_path, data)
+    output_path = tmp_path / "report.html"
+    code = main([str(plan_path), "--mode", "deterministic", "-o", str(output_path)])
+    assert code == 0
+
+    text = output_path.read_text(encoding="utf-8")
+    expected_header = "<th>Year (Age)</th><th>Cash</th><th>IRA</th><th>Brokerage</th>"
+    assert expected_header in text
+    expected_month_header = "<th>Month</th><th>Cash</th><th>IRA</th><th>Brokerage</th>"
+    assert expected_month_header in text
 
 
 def test_annual_financials_contributions_do_not_show_account_inflows_when_total_is_zero(
