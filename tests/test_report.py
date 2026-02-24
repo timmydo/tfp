@@ -1,4 +1,3 @@
-import json
 import re
 
 from tests.helpers import clone_plan, write_plan
@@ -13,8 +12,6 @@ def test_report_html_includes_required_sections(tmp_path):
     text = output_path.read_text(encoding="utf-8")
 
     assert "Overview" in text
-    assert "Dashboard" in text
-    assert "Charts" in text
     assert "Money Flows" in text
     assert "Totals by Year" in text
     assert "Account Details" in text
@@ -24,11 +21,7 @@ def test_report_html_includes_required_sections(tmp_path):
     assert "Calculation Log" in text
     assert "Plan Validation" in text
 
-    assert 'id="chart-net-worth"' in text
-    assert 'id="chart-tax"' in text
-    assert 'id="chart-sankey"' in text
-    assert 'id="chart-account-balance-yearly"' in text
-    assert 'id="chart-account-flow-yearly"' in text
+    assert 'id="tab-flows"' in text
     assert 'id="tab-account-balances"' in text
     assert 'id="tab-account-flows"' in text
     assert 'id="tab-taxes"' in text
@@ -39,6 +32,10 @@ def test_report_html_includes_required_sections(tmp_path):
     assert "Full normalized plan JSON used for calculations" in text
     assert "Mode:" in text
     assert "Plan hash:" in text
+    assert "Dashboard" not in text
+    assert "Charts" not in text
+    assert "sankey-year" not in text
+    assert "chart-" not in text
 
     # Self-contained output: no remote script/style references.
     assert "https://" not in text
@@ -176,12 +173,7 @@ def test_account_balance_view_chart_and_monthly_table_values(tmp_path, sample_pl
     assert "<td>2026-02</td><td>$1,000</td><td>$2,000</td>" in text
     assert "<td>2026-03</td><td>$1,000</td><td>$2,000</td>" in text
 
-    payload_match = re.search(r"const payload = (\{.*?\});", text, flags=re.DOTALL)
-    assert payload_match is not None
-    payload = json.loads(payload_match.group(1))
-    assert payload["charts"]["years"] == [2026]
-    assert payload["charts"]["accountBalances"]["Cash"] == [1000.0]
-    assert payload["charts"]["accountBalances"]["Brokerage"] == [2000.0]
+    assert "const payload =" not in text
 
 
 def test_account_flow_view_chart_and_monthly_table_values(tmp_path, sample_plan_dict):
@@ -276,9 +268,4 @@ def test_account_flow_view_chart_and_monthly_table_values(tmp_path, sample_plan_
     assert "Transfer out: Move to brokerage: $-300" in text
     assert "Transfer in: Move to brokerage: +$300" in text
 
-    payload_match = re.search(r"const payload = (\{.*?\});", text, flags=re.DOTALL)
-    assert payload_match is not None
-    payload = json.loads(payload_match.group(1))
-    assert payload["charts"]["years"] == [2026]
-    assert payload["charts"]["accountFlowByYear"]["Cash"] == [-600.0]
-    assert payload["charts"]["accountFlowByYear"]["Brokerage"] == [300.0]
+    assert "const payload =" not in text

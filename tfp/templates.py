@@ -8,7 +8,6 @@ def render_html_document(
     title: str,
     subtitle: str,
     overview_panel: str,
-    dashboard_cards: str,
     annual_table: str,
     flow_table: str,
     account_tables: str,
@@ -17,7 +16,6 @@ def render_html_document(
     tax_table: str,
     calc_log_table: str,
     validation_table: str,
-    payload_json: str,
 ) -> str:
     return f"""<!doctype html>
 <html lang=\"en\">
@@ -33,7 +31,6 @@ def render_html_document(
       --muted: #6b7280;
       --line: #d7c7af;
       --brand: #9a3412;
-      --ok: #166534;
       --warn: #991b1b;
     }}
     * {{ box-sizing: border-box; }}
@@ -47,13 +44,6 @@ def render_html_document(
     .tab {{ display: none; }}
     .tab.active {{ display: block; }}
     .panel {{ background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 0.85rem; margin-bottom: 0.85rem; }}
-    .cards {{ display: grid; gap: 0.6rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }}
-    .card {{ background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 0.65rem; }}
-    .card .k {{ color: var(--muted); font-size: 0.85rem; }}
-    .card .v {{ font-size: 1.2rem; font-weight: 700; }}
-    .chart-title {{ margin: 0 0 0.15rem; font-size: 1.1rem; font-weight: 700; color: var(--ink); }}
-    .chart-desc {{ margin: 0 0 0.5rem; font-size: 0.88rem; color: var(--muted); }}
-    canvas {{ width: 100%; height: 450px; display: block; background: #fff; border: 1px solid #eadfce; border-radius: 10px; }}
     table {{ border-collapse: collapse; width: 100%; font-size: 0.9rem; }}
     th, td {{ border: 1px solid #e9dbc7; padding: 0.35rem 0.45rem; text-align: right; }}
     th:first-child, td:first-child {{ text-align: left; }}
@@ -65,12 +55,9 @@ def render_html_document(
     details {{ margin-top: 0.75rem; }}
     summary {{ cursor: pointer; }}
     pre {{ margin: 0.5rem 0 0; padding: 0.6rem; background: #fff; border: 1px solid #e9dbc7; border-radius: 8px; overflow-x: auto; font-size: 0.78rem; line-height: 1.3; }}
-    input[type=range] {{ width: 100%; }}
-    .chart-tooltip {{ position: fixed; z-index: 9999; pointer-events: none; display: none; max-width: 360px; background: rgba(17, 24, 39, 0.96); color: #fff; border: 1px solid #374151; border-radius: 8px; padding: 0.45rem 0.55rem; font-size: 0.8rem; line-height: 1.25; white-space: pre-line; box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2); }}
     @media (max-width: 700px) {{
       h1 {{ font-size: 1.5rem; }}
       .tab-btn {{ font-size: 0.9rem; }}
-      canvas {{ height: 320px; }}
     }}
   </style>
 </head>
@@ -80,8 +67,6 @@ def render_html_document(
     <div class=\"meta\">{subtitle}</div>
     <div class=\"tabs\" id=\"tabs\">
       <button class=\"tab-btn active\" data-tab=\"overview\">Overview</button>
-      <button class=\"tab-btn\" data-tab=\"dashboard\">Dashboard</button>
-      <button class=\"tab-btn\" data-tab=\"charts\">Charts</button>
       <button class=\"tab-btn\" data-tab=\"flows\">Money Flows</button>
       <button class=\"tab-btn\" data-tab=\"tables\">Totals by Year</button>
       <button class=\"tab-btn\" data-tab=\"accounts\">Account Details</button>
@@ -96,63 +81,7 @@ def render_html_document(
       <div class=\"panel\">{overview_panel}</div>
     </section>
 
-    <section class=\"tab\" id=\"tab-dashboard\">
-      <div class=\"cards\">{dashboard_cards}</div>
-      <div class=\"panel\">
-        <h3 class=\"chart-title\">Net Worth Over Time</h3>
-        <p class=\"chart-desc\">Total net worth across all accounts projected over the plan period.</p>
-        <canvas id=\"chart-net-worth\"></canvas>
-      </div>
-      <div class=\"panel\">
-        <h3 class=\"chart-title\">Income vs Expenses</h3>
-        <p class=\"chart-desc\">Net difference between total income and total expenses each year.</p>
-        <canvas id=\"chart-income-expenses\"></canvas>
-      </div>
-      <div class=\"panel\">
-        <h3 class=\"chart-title\" id=\"chart-success-title\">Probability of Success</h3>
-        <p class=\"chart-desc\" id=\"chart-success-desc\">Median portfolio value across simulations with success rate.</p>
-        <canvas id=\"chart-success\"></canvas>
-      </div>
-    </section>
-
-    <section class=\"tab\" id=\"tab-charts\">
-      <div class=\"panel\">
-        <h3 class=\"chart-title\">Net Worth by Account</h3>
-        <p class=\"chart-desc\">Stacked breakdown of net worth by individual account.</p>
-        <canvas id=\"chart-accounts-stack\"></canvas>
-      </div>
-      <div class=\"panel\">
-        <h3 class=\"chart-title\">Total Balance Trend</h3>
-        <p class=\"chart-desc\">Overall portfolio balance trajectory over the plan period.</p>
-        <canvas id=\"chart-account-lines\"></canvas>
-      </div>
-      <div class=\"panel\">
-        <h3 class=\"chart-title\">Tax Burden</h3>
-        <p class=\"chart-desc\">Annual tax breakdown by category: federal, state, capital gains, NIIT, AMT, and penalties.</p>
-        <canvas id=\"chart-tax\"></canvas>
-      </div>
-      <div class=\"panel\">
-        <h3 class=\"chart-title\">Asset Allocation</h3>
-        <p class=\"chart-desc\">Portfolio mix of stocks, bonds, and cash across all accounts over time.</p>
-        <canvas id=\"chart-allocation\"></canvas>
-      </div>
-      <div class=\"panel\">
-        <h3 class=\"chart-title\">Withdrawal Sources</h3>
-        <p class=\"chart-desc\">Which accounts are drawn from each year to cover expenses.</p>
-        <canvas id=\"chart-withdrawals\"></canvas>
-      </div>
-    </section>
-
     <section class=\"tab\" id=\"tab-flows\">
-      <div class=\"panel\">
-        <label for=\"sankey-year\">Year: <strong id=\"sankey-year-label\"></strong></label>
-        <input id=\"sankey-year\" type=\"range\" min=\"0\" max=\"0\" value=\"0\" />
-      </div>
-      <div class=\"panel\">
-        <h3 class=\"chart-title\">Money Flow</h3>
-        <p class=\"chart-desc\">Sankey diagram showing how money flows from income sources to expense categories.</p>
-        <canvas id=\"chart-sankey\"></canvas>
-      </div>
       <div class=\"panel\">{flow_table}</div>
     </section>
 
@@ -166,70 +95,46 @@ def render_html_document(
 
     <section class=\"tab\" id=\"tab-account-balances\">
       <div class=\"panel\">
-        <h3 class=\"chart-title\">Account Balances by Year</h3>
-        <p class=\"chart-desc\">Stacked bar chart of year-end balances for each account.</p>
-        <canvas id=\"chart-account-balance-yearly\"></canvas>
-      </div>
-      <div class=\"panel\">
-        <h3 class=\"chart-title\">Monthly Account Balances</h3>
-        <p class=\"chart-desc\">End-of-month balances for each account.</p>
+        <h3>Monthly Account Balances</h3>
+        <p class=\"subtle\">End-of-month balances for each account.</p>
         {account_balance_table}
       </div>
     </section>
 
     <section class=\"tab\" id=\"tab-account-flows\">
       <div class=\"panel\">
-        <h3 class=\"chart-title\">Account Flows by Year</h3>
-        <p class=\"chart-desc\">Stacked bars of net money added/removed per account each year.</p>
-        <canvas id=\"chart-account-flow-yearly\"></canvas>
-      </div>
-      <div class=\"panel\">
-        <h3 class=\"chart-title\">Monthly Account Flows</h3>
-        <p class=\"chart-desc\">Month-over-month change in each account balance (positive = added, negative = removed). Hover a cell for its breakdown.</p>
+        <h3>Monthly Account Flows</h3>
+        <p class=\"subtle\">Month-over-month change in each account balance (positive = added, negative = removed). Hover a cell for its breakdown.</p>
         {account_flow_table}
       </div>
     </section>
 
     <section class=\"tab\" id=\"tab-taxes\">
       <div class=\"panel\">
-        <h3 class=\"chart-title\">Monthly Taxes</h3>
-        <p class=\"chart-desc\">Month-by-month tax cash flows. Hover cells for breakdowns and projection basis used for estimated payments.</p>
+        <h3>Monthly Taxes</h3>
+        <p class=\"subtle\">Month-by-month tax cash flows. Hover cells for breakdowns and projection basis used for estimated payments.</p>
         {tax_table}
       </div>
     </section>
 
     <section class=\"tab\" id=\"tab-calc-log\">
       <div class=\"panel\">
-        <h3 class=\"chart-title\">Monthly Calculation Log</h3>
-        <p class=\"chart-desc\">Verbose monthly ledger of computed amounts used by the deterministic engine. Hover numeric cells for why they were calculated.</p>
+        <h3>Monthly Calculation Log</h3>
+        <p class=\"subtle\">Verbose monthly ledger of computed amounts used by the deterministic engine. Hover numeric cells for why they were calculated.</p>
         {calc_log_table}
       </div>
     </section>
 
     <section class=\"tab\" id=\"tab-validation\">
       <div class=\"panel\">
-        <h3 class=\"chart-title\">Plan Validation and Common Mistakes</h3>
-        <p class=\"chart-desc\">Schema validation warnings plus non-blocking sanity checks for unusual assumptions.</p>
+        <h3>Plan Validation and Common Mistakes</h3>
+        <p class=\"subtle\">Schema validation warnings plus non-blocking sanity checks for unusual assumptions.</p>
         {validation_table}
       </div>
     </section>
   </div>
 
   <script>
-    const payload = {payload_json};
-    let chartTooltipEl = null;
-
-    function fmtMoney(v) {{
-      return '$' + (Number(v || 0)).toLocaleString(undefined, {{ maximumFractionDigits: 0 }});
-    }}
-
-    function fmtSignedMoney(v) {{
-      const n = Number(v || 0);
-      if (n > 0) return '+' + fmtMoney(n);
-      if (n < 0) return '-$' + Math.abs(n).toLocaleString(undefined, {{ maximumFractionDigits: 0 }});
-      return fmtMoney(0);
-    }}
-
     function tabsInit() {{
       const buttons = [...document.querySelectorAll('.tab-btn')];
       buttons.forEach((btn) => {{
@@ -242,378 +147,7 @@ def render_html_document(
       }});
     }}
 
-    const M = {{ left: 70, right: 20, top: 20, bottom: 40 }};
-
-    function getChartTooltip() {{
-      if (!chartTooltipEl) {{
-        chartTooltipEl = document.createElement('div');
-        chartTooltipEl.className = 'chart-tooltip';
-        document.body.appendChild(chartTooltipEl);
-      }}
-      return chartTooltipEl;
-    }}
-
-    function hideChartTooltip() {{
-      const el = getChartTooltip();
-      el.style.display = 'none';
-      el.textContent = '';
-    }}
-
-    function showChartTooltip(event, lines) {{
-      if (!lines || lines.length === 0) {{
-        hideChartTooltip();
-        return;
-      }}
-      const el = getChartTooltip();
-      el.textContent = lines.join('\\n');
-      el.style.display = 'block';
-      el.style.left = (event.clientX + 14) + 'px';
-      el.style.top = (event.clientY + 14) + 'px';
-    }}
-
-    function stackBreakdownLines(stacks, idx, signed, maxItems) {{
-      const limit = maxItems || 8;
-      const entries = Object.entries(stacks || {{}})
-        .map(([name, series]) => [name, Number((series || [])[idx] || 0)])
-        .filter(([, value]) => Math.abs(value) > 0.01)
-        .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
-      const shown = entries.slice(0, limit);
-      const lines = shown.map(([name, value]) => `${{name}}: ${{signed ? fmtSignedMoney(value) : fmtMoney(value)}}`);
-      if (entries.length > shown.length) {{
-        lines.push(`+${{entries.length - shown.length}} more`);
-      }}
-      const total = entries.reduce((sum, [, value]) => sum + value, 0);
-      lines.push(`Total: ${{signed ? fmtSignedMoney(total) : fmtMoney(total)}}`);
-      return lines;
-    }}
-
-    function attachYearTooltip(canvas, years, linesForIndex) {{
-      if (!canvas) return;
-      if (canvas._tfpTooltipHandlers) {{
-        canvas.removeEventListener('mousemove', canvas._tfpTooltipHandlers.move);
-        canvas.removeEventListener('mouseleave', canvas._tfpTooltipHandlers.leave);
-      }}
-      const onMove = (event) => {{
-        if (!years || years.length === 0) {{
-          hideChartTooltip();
-          return;
-        }}
-        const rect = canvas.getBoundingClientRect();
-        const scaledX = (event.clientX - rect.left) * (canvas.width / Math.max(1, rect.width));
-        const scaledY = (event.clientY - rect.top) * (canvas.height / Math.max(1, rect.height));
-        if (scaledX < M.left || scaledX > canvas.width - M.right || scaledY < M.top || scaledY > canvas.height - M.bottom) {{
-          hideChartTooltip();
-          return;
-        }}
-        const plotW = canvas.width - M.left - M.right;
-        const rawIdx = years.length === 1
-          ? 0
-          : Math.round(((scaledX - M.left) / Math.max(1, plotW)) * (years.length - 1));
-        const idx = Math.max(0, Math.min(years.length - 1, rawIdx));
-        const lines = linesForIndex(idx) || [];
-        showChartTooltip(event, [`Year: ${{years[idx]}}`, ...lines]);
-      }};
-      const onLeave = () => hideChartTooltip();
-      canvas.addEventListener('mousemove', onMove);
-      canvas.addEventListener('mouseleave', onLeave);
-      canvas._tfpTooltipHandlers = {{ move: onMove, leave: onLeave }};
-    }}
-
-    function drawAxes(ctx, w, h, years, maxV, minV) {{
-      const plotH = h - M.top - M.bottom;
-      const plotW = w - M.left - M.right;
-      ctx.strokeStyle = '#ccc';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(M.left, M.top);
-      ctx.lineTo(M.left, h - M.bottom);
-      ctx.lineTo(w - M.right, h - M.bottom);
-      ctx.stroke();
-
-      const span = Math.max(1, (maxV || 1) - (minV || 0));
-      const gridLines = 5;
-      ctx.setLineDash([4, 4]);
-      ctx.strokeStyle = '#e0e0e0';
-      ctx.lineWidth = 1;
-      ctx.fillStyle = '#666';
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'right';
-      for (let i = 0; i <= gridLines; i++) {{
-        const frac = i / gridLines;
-        const yVal = (minV || 0) + frac * span;
-        const yPx = h - M.bottom - frac * plotH;
-        if (i > 0 && i < gridLines) {{
-          ctx.beginPath();
-          ctx.moveTo(M.left, yPx);
-          ctx.lineTo(w - M.right, yPx);
-          ctx.stroke();
-        }}
-        ctx.fillText(fmtMoney(yVal), M.left - 6, yPx + 4);
-      }}
-      ctx.setLineDash([]);
-
-      if (years && years.length > 0) {{
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#666';
-        ctx.font = '12px sans-serif';
-        const step = Math.max(1, Math.ceil(years.length / 10));
-        for (let i = 0; i < years.length; i += step) {{
-          const x = M.left + (i / Math.max(1, years.length - 1)) * plotW;
-          ctx.fillText(String(years[i]), x, h - M.bottom + 16);
-        }}
-        if ((years.length - 1) % step !== 0) {{
-          const x = M.left + plotW;
-          ctx.fillText(String(years[years.length - 1]), x, h - M.bottom + 16);
-        }}
-      }}
-      ctx.textAlign = 'left';
-    }}
-
-    function drawLegend(ctx, names, palette, x, y) {{
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'left';
-      let cx = x;
-      names.forEach((name, i) => {{
-        ctx.fillStyle = palette[i % palette.length];
-        ctx.fillRect(cx, y - 10, 12, 12);
-        ctx.fillStyle = '#333';
-        const label = name.length > 18 ? name.slice(0, 16) + '..' : name;
-        ctx.fillText(label, cx + 16, y);
-        cx += ctx.measureText(label).width + 32;
-        if (cx > ctx.canvas.width - M.right - 40) {{
-          cx = x;
-          y += 18;
-        }}
-      }});
-    }}
-
-    function drawLine(canvasId, years, series, title, color, tooltipBuilder) {{
-      const c = document.getElementById(canvasId); if (!c) return;
-      const rect = c.getBoundingClientRect(); c.width = Math.max(380, Math.floor(rect.width)); c.height = Math.floor(rect.height);
-      const ctx = c.getContext('2d'); const w = c.width, h = c.height;
-      ctx.clearRect(0, 0, w, h);
-      const vals = series.map(Number); const maxV = Math.max(1, ...vals);
-      const minV = Math.min(0, ...vals); const span = Math.max(1, maxV - minV);
-      drawAxes(ctx, w, h, years, maxV, minV);
-      const plotW = w - M.left - M.right;
-      const plotH = h - M.top - M.bottom;
-      ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.beginPath();
-      vals.forEach((v, i) => {{
-        const x = M.left + (i * plotW / Math.max(1, vals.length - 1));
-        const y = (h - M.bottom) - ((v - minV) / span) * plotH;
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      }});
-      ctx.stroke();
-      attachYearTooltip(c, years, (idx) => {{
-        if (tooltipBuilder) return tooltipBuilder(idx);
-        return [`Value: ${{fmtMoney(vals[idx] || 0)}}`];
-      }});
-    }}
-
-    function drawBars(canvasId, years, stacks, title, tooltipBuilder) {{
-      const c = document.getElementById(canvasId); if (!c) return;
-      const rect = c.getBoundingClientRect(); c.width = Math.max(380, Math.floor(rect.width)); c.height = Math.floor(rect.height);
-      const ctx = c.getContext('2d'); const w = c.width, h = c.height;
-      ctx.clearRect(0, 0, w, h);
-      const names = Object.keys(stacks);
-      const palette = ['#9a3412','#166534','#1d4ed8','#92400e','#6b21a8','#be123c','#0f766e'];
-      const totals = years.map((_, i) => names.reduce((sum, n) => sum + Number((stacks[n] || [])[i] || 0), 0));
-      const maxV = Math.max(1, ...totals);
-      drawAxes(ctx, w, h, years, maxV, 0);
-      const plotW = w - M.left - M.right;
-      const plotH = h - M.top - M.bottom;
-      years.forEach((_, i) => {{
-        const x = M.left + 4 + i * plotW / Math.max(1, years.length);
-        const bw = Math.max(2, plotW / Math.max(1, years.length) - 2);
-        let top = h - M.bottom;
-        names.forEach((name, idx) => {{
-          const v = Number((stacks[name] || [])[i] || 0);
-          if (v <= 0) return;
-          const bh = (v / maxV) * plotH;
-          ctx.fillStyle = palette[idx % palette.length];
-          ctx.fillRect(x, top - bh, bw, bh);
-          top -= bh;
-        }});
-      }});
-      drawLegend(ctx, names, palette, M.left + 4, M.top + 14);
-      attachYearTooltip(c, years, (idx) => {{
-        if (tooltipBuilder) return tooltipBuilder(idx);
-        return stackBreakdownLines(stacks, idx, false, 8);
-      }});
-    }}
-
-    function drawBarsSigned(canvasId, years, stacks, title, tooltipBuilder) {{
-      const c = document.getElementById(canvasId); if (!c) return;
-      const rect = c.getBoundingClientRect(); c.width = Math.max(380, Math.floor(rect.width)); c.height = Math.floor(rect.height);
-      const ctx = c.getContext('2d'); const w = c.width, h = c.height;
-      ctx.clearRect(0, 0, w, h);
-      const names = Object.keys(stacks);
-      const palette = ['#9a3412','#166534','#1d4ed8','#92400e','#6b21a8','#be123c','#0f766e'];
-      const posTotals = years.map((_, i) => names.reduce((sum, n) => sum + Math.max(0, Number((stacks[n] || [])[i] || 0)), 0));
-      const negTotals = years.map((_, i) => names.reduce((sum, n) => sum + Math.min(0, Number((stacks[n] || [])[i] || 0)), 0));
-      const maxV = Math.max(1, ...posTotals);
-      const minV = Math.min(-1, ...negTotals);
-      const span = Math.max(1, maxV - minV);
-      drawAxes(ctx, w, h, years, maxV, minV);
-      const plotW = w - M.left - M.right;
-      const plotH = h - M.top - M.bottom;
-      const zeroY = (h - M.bottom) - ((0 - minV) / span) * plotH;
-      years.forEach((_, i) => {{
-        const x = M.left + 4 + i * plotW / Math.max(1, years.length);
-        const bw = Math.max(2, plotW / Math.max(1, years.length) - 2);
-        let topPos = zeroY;
-        let topNeg = zeroY;
-        names.forEach((name, idx) => {{
-          const v = Number((stacks[name] || [])[i] || 0);
-          if (v === 0) return;
-          const bh = (Math.abs(v) / span) * plotH;
-          ctx.fillStyle = palette[idx % palette.length];
-          if (v > 0) {{
-            ctx.fillRect(x, topPos - bh, bw, bh);
-            topPos -= bh;
-          }} else {{
-            ctx.fillRect(x, topNeg, bw, bh);
-            topNeg += bh;
-          }}
-        }});
-      }});
-      drawLegend(ctx, names, palette, M.left + 4, M.top + 14);
-      attachYearTooltip(c, years, (idx) => {{
-        if (tooltipBuilder) return tooltipBuilder(idx);
-        return stackBreakdownLines(stacks, idx, true, 8);
-      }});
-    }}
-
-    function drawAreaStack(canvasId, years, stacks, title, tooltipBuilder) {{
-      const c = document.getElementById(canvasId); if (!c) return;
-      const rect = c.getBoundingClientRect(); c.width = Math.max(380, Math.floor(rect.width)); c.height = Math.floor(rect.height);
-      const ctx = c.getContext('2d'); const w = c.width, h = c.height;
-      ctx.clearRect(0, 0, w, h);
-      const names = Object.keys(stacks);
-      const palette = ['#f97316','#16a34a','#2563eb','#7c3aed','#db2777','#0891b2'];
-      const totals = years.map((_, i) => names.reduce((sum, n) => sum + Number((stacks[n] || [])[i] || 0), 0));
-      const maxV = Math.max(1, ...totals);
-      drawAxes(ctx, w, h, years, maxV, 0);
-      const plotW = w - M.left - M.right;
-      const plotH = h - M.top - M.bottom;
-      const cumulative = years.map(() => 0);
-      names.forEach((name, idx) => {{
-        ctx.beginPath();
-        years.forEach((_, i) => {{
-          const x = M.left + i * plotW / Math.max(1, years.length - 1);
-          const next = cumulative[i] + Number((stacks[name] || [])[i] || 0);
-          const y = (h - M.bottom) - (next / maxV) * plotH;
-          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-          cumulative[i] = next;
-        }});
-        for (let i = years.length - 1; i >= 0; i--) {{
-          const x = M.left + i * plotW / Math.max(1, years.length - 1);
-          const prev = cumulative[i] - Number((stacks[name] || [])[i] || 0);
-          const y = (h - M.bottom) - (prev / maxV) * plotH;
-          ctx.lineTo(x, y);
-        }}
-        ctx.closePath();
-        ctx.fillStyle = palette[idx % palette.length] + 'cc';
-        ctx.fill();
-      }});
-      drawLegend(ctx, names, palette, M.left + 4, M.top + 14);
-      attachYearTooltip(c, years, (idx) => {{
-        if (tooltipBuilder) return tooltipBuilder(idx);
-        return stackBreakdownLines(stacks, idx, false, 8);
-      }});
-    }}
-
-    function renderSankey(yearIndex) {{
-      const years = payload.sankey.years;
-      const year = years[yearIndex] || years[0];
-      const flow = payload.sankey.flows[year] || {{ sources: {{}}, destinations: {{}} }};
-      document.getElementById('sankey-year-label').textContent = String(year || '');
-      const c = document.getElementById('chart-sankey');
-      const rect = c.getBoundingClientRect(); c.width = Math.max(380, Math.floor(rect.width)); c.height = Math.floor(rect.height);
-      const ctx = c.getContext('2d'); const w = c.width, h = c.height;
-      ctx.clearRect(0, 0, w, h);
-      const src = Object.entries(flow.sources || {{}}).filter(([,v]) => Number(v) > 0);
-      const dst = Object.entries(flow.destinations || {{}}).filter(([,v]) => Number(v) > 0);
-      const srcTotal = src.reduce((s, [,v]) => s + Number(v), 0) || 1;
-      const dstTotal = dst.reduce((s, [,v]) => s + Number(v), 0) || 1;
-      const sx = 32, dx = w - 200;
-      let y1 = 20, y2 = 20;
-      const srcNodes = src.map(([k,v]) => {{ const hh = Math.max(18, (Number(v)/srcTotal)*(h-40)); const n = {{k,v:Number(v),x:sx,y:y1,h:hh}}; y1 += hh + 8; return n; }});
-      const dstNodes = dst.map(([k,v]) => {{ const hh = Math.max(18, (Number(v)/dstTotal)*(h-40)); const n = {{k,v:Number(v),x:dx,y:y2,h:hh}}; y2 += hh + 8; return n; }});
-      ctx.font = '13px sans-serif';
-      srcNodes.forEach((n) => {{ ctx.fillStyle = '#bfdbfe'; ctx.fillRect(n.x, n.y, 160, n.h); ctx.fillStyle = '#1f2937'; ctx.fillText(`${{n.k}}  ${{Math.round(n.v).toLocaleString()}}`, n.x+6, n.y+14); }});
-      dstNodes.forEach((n) => {{ ctx.fillStyle = '#fecaca'; ctx.fillRect(n.x, n.y, 160, n.h); ctx.fillStyle = '#1f2937'; ctx.fillText(`${{n.k}}  ${{Math.round(n.v).toLocaleString()}}`, n.x+6, n.y+14); }});
-      srcNodes.forEach((s, si) => {{
-        dstNodes.forEach((d, di) => {{
-          const width = Math.max(1, ((s.v/srcTotal) * (d.v/dstTotal)) * 18);
-          ctx.strokeStyle = `rgba(120,120,120,${{Math.min(0.35, 0.08 + width/40)}})`;
-          ctx.lineWidth = width;
-          ctx.beginPath();
-          ctx.moveTo(s.x + 160, s.y + s.h/2);
-          ctx.bezierCurveTo(w*0.42, s.y + s.h/2, w*0.58, d.y + d.h/2, d.x, d.y + d.h/2);
-          ctx.stroke();
-        }});
-      }});
-    }}
-
-    function renderAll() {{
-      const years = payload.charts.years;
-      drawLine('chart-net-worth', years, payload.charts.netWorth, 'Net Worth', '#9a3412', (idx) => stackBreakdownLines(payload.charts.accountsStacked, idx, false, 10));
-      drawLine('chart-income-expenses', years, payload.charts.income.map((v,i)=>v-payload.charts.expenses[i]), 'Income - Expenses', '#166534', (idx) => {{
-        const income = Number((payload.charts.income || [])[idx] || 0);
-        const expenses = Number((payload.charts.expenses || [])[idx] || 0);
-        const breakdown = payload.charts.expenseBreakdown || {{}};
-        const healthcare = Number((breakdown.healthcare || [])[idx] || 0);
-        const other = Number((breakdown.other || [])[idx] || 0);
-        const realAssets = Number((breakdown.real_assets || [])[idx] || 0);
-        const net = income - expenses;
-        return [
-          `Income: ${{fmtMoney(income)}}`,
-          `Expenses: ${{fmtMoney(expenses)}}`,
-          `Net: ${{fmtSignedMoney(net)}}`,
-          `Healthcare: ${{fmtMoney(healthcare)}}`,
-          `Other expenses: ${{fmtMoney(other)}}`,
-          `Real-asset costs: ${{fmtMoney(realAssets)}}`,
-        ];
-      }});
-      drawAreaStack('chart-accounts-stack', years, payload.charts.accountsStacked, 'Net Worth by Account');
-      drawBars('chart-account-balance-yearly', years, payload.charts.accountBalances, 'Account Balances by Year');
-      drawBarsSigned('chart-account-flow-yearly', years, payload.charts.accountFlowByYear, 'Account Flows by Year');
-      drawLine('chart-account-lines', years, payload.charts.netWorth, 'Total Balance Trend', '#1d4ed8', (idx) => stackBreakdownLines(payload.charts.accountsStacked, idx, false, 10));
-      drawBars('chart-tax', years, payload.charts.taxBurden, 'Tax Burden');
-      drawAreaStack('chart-allocation', years, payload.charts.allocation, 'Asset Allocation');
-      drawBars('chart-withdrawals', years, payload.charts.withdrawalSources, 'Withdrawal Sources');
-      if ((payload.charts.success.p50 || []).length > 0) {{
-        const titleEl = document.getElementById('chart-success-title');
-        const descEl = document.getElementById('chart-success-desc');
-        if (titleEl) titleEl.textContent = 'Probability of Success';
-        if (descEl) descEl.textContent = 'Median portfolio value across simulations with success rate.';
-        drawLine('chart-success', years, payload.charts.success.p50, `Success / Median (rate ${{(payload.charts.success.rate||0)*100}}% )`, '#6b21a8', (idx) => [
-          `Success rate: ${{((payload.charts.success.rate || 0) * 100).toFixed(1)}}%`,
-          `P10: ${{fmtMoney((payload.charts.success.p10 || [])[idx] || 0)}}`,
-          `P25: ${{fmtMoney((payload.charts.success.p25 || [])[idx] || 0)}}`,
-          `P50: ${{fmtMoney((payload.charts.success.p50 || [])[idx] || 0)}}`,
-          `P75: ${{fmtMoney((payload.charts.success.p75 || [])[idx] || 0)}}`,
-          `P90: ${{fmtMoney((payload.charts.success.p90 || [])[idx] || 0)}}`,
-        ]);
-      }} else {{
-        const titleEl = document.getElementById('chart-success-title');
-        const descEl = document.getElementById('chart-success-desc');
-        if (titleEl) titleEl.textContent = 'Net Worth Trend';
-        if (descEl) descEl.textContent = 'Total portfolio balance trend over time.';
-        drawLine('chart-success', years, payload.charts.netWorth, `Net Worth Trend`, '#6b21a8', (idx) => stackBreakdownLines(payload.charts.accountsStacked, idx, false, 10));
-      }}
-
-      const slider = document.getElementById('sankey-year');
-      slider.max = String(Math.max(0, payload.sankey.years.length - 1));
-      slider.value = '0';
-      slider.addEventListener('input', () => renderSankey(Number(slider.value || 0)));
-      renderSankey(0);
-    }}
-
     tabsInit();
-    renderAll();
-    addEventListener('resize', () => renderAll());
   </script>
 </body>
 </html>

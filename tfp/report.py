@@ -9,9 +9,7 @@ import html
 import json
 from pathlib import Path
 
-from .charts import build_chart_payload
 from .engine import EngineResult, run_deterministic
-from .sankey import build_sankey_payload
 from .schema import Plan
 from .simulation import SimulationResult
 from .templates import render_html_document
@@ -233,26 +231,6 @@ def _overview_panel(plan: Plan, plan_path: str) -> str:
         + f"<pre>{plan_json}</pre>"
         + "</details>"
     )
-
-
-def _dashboard_cards(result: SimulationResult, detail: EngineResult) -> str:
-    start_year = result.annual[0].year if result.annual else None
-    end_year = result.annual[-1].year if result.annual else None
-    ending = result.annual[-1].net_worth_end if result.annual else 0.0
-    total_income = sum(row.income for row in result.annual)
-    total_expenses = sum(row.expenses for row in result.annual)
-    avg_tax = sum((row.tax_total if row.tax_total > 0 else row.tax_withheld) for row in detail.annual) / max(1, len(detail.annual))
-    success_rate = 0.0 if result.success_rate is None else result.success_rate * 100.0
-
-    cards = [
-        ("Years", f"{start_year}-{end_year}"),
-        ("Ending Net Worth", _money(ending)),
-        ("Success Rate", f"{success_rate:.1f}%"),
-        ("Total Income", _money(total_income)),
-        ("Total Expenses", _money(total_expenses)),
-        ("Avg Annual Tax", _money(avg_tax)),
-    ]
-    return "".join(f'<div class="card"><div class="k">{html.escape(k)}</div><div class="v">{html.escape(v)}</div></div>' for k, v in cards)
 
 
 def _annual_summary_table(result: SimulationResult, detail: EngineResult) -> str:
@@ -555,22 +533,8 @@ def _account_flow_monthly_table(plan: Plan, detail: EngineResult) -> str:
     return f'<div class="table-wrap">{table_html}</div>'
 
 
-def _report_payload(plan: Plan, result: SimulationResult, detail: EngineResult) -> dict[str, object]:
-    return {
-        "mode": result.mode,
-        "seed": result.seed,
-        "scenario_count": result.scenario_count,
-        "success_rate": result.success_rate,
-        "insolvency_years": result.insolvency_years,
-        "annual": [asdict(row) for row in result.annual],
-        "charts": build_chart_payload(plan, result, detail),
-        "sankey": build_sankey_payload(detail),
-    }
-
-
 def render_report(plan: Plan, result: SimulationResult, plan_path: str) -> str:
     detail = run_deterministic(plan)
-    payload = _report_payload(plan, result, detail)
 
     plan_hash = hashlib.sha256(Path(plan_path).read_bytes()).hexdigest()[:12]
     title = f"TFP Report - {html.escape(plan.people.primary.name)}"
@@ -584,7 +548,6 @@ def render_report(plan: Plan, result: SimulationResult, plan_path: str) -> str:
         title=title,
         subtitle=subtitle,
         overview_panel=_overview_panel(plan, plan_path),
-        dashboard_cards=_dashboard_cards(result, detail),
         annual_table=_annual_summary_table(result, detail),
         flow_table=_money_flow_table(detail),
         account_tables=_account_detail_tables(detail),
@@ -593,7 +556,6 @@ def render_report(plan: Plan, result: SimulationResult, plan_path: str) -> str:
         tax_table=_monthly_tax_table(detail),
         calc_log_table=_calculation_log_table(detail),
         validation_table=_validation_panel(plan),
-        payload_json=json.dumps(payload),
     )
 
 
