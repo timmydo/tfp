@@ -306,3 +306,81 @@ def test_primary_residence_sale_applies_gain_exclusion(tmp_path, sample_plan_dic
     month = result.monthly[0]
     # MFJ exclusion is 500k: gain = 1.1m - 300k - 500k = 300k
     assert round(month.realized_capital_gains, 2) == 300000.00
+
+
+def test_transfer_with_insufficient_source_balance_does_not_record_impossible_withdrawal(tmp_path, sample_plan_dict):
+    data = clone_plan(sample_plan_dict)
+    data["plan_settings"]["plan_start"] = "2026-01"
+    data["plan_settings"]["plan_end"] = "2026-01"
+    data["income"] = []
+    data["expenses"] = []
+    data["contributions"] = []
+    data["transactions"] = []
+    data["real_assets"] = []
+    data["healthcare"]["pre_medicare"] = []
+    data["healthcare"]["post_medicare"] = []
+    data["social_security"] = []
+    data["roth_conversions"] = []
+    data["rmds"] = {
+        "enabled": False,
+        "rmd_start_age": 73,
+        "accounts": [],
+        "destination_account": "Cash",
+    }
+    data["accounts"] = [
+        {
+            "name": "Cash",
+            "type": "cash",
+            "owner": "primary",
+            "balance": 0,
+            "cost_basis": None,
+            "growth_rate": 0.0,
+            "dividend_yield": 0.0,
+            "dividend_tax_treatment": "tax_free",
+            "reinvest_dividends": False,
+            "bond_allocation_percent": 100,
+            "yearly_fees": 0.0,
+            "allow_withdrawals": True,
+        },
+        {
+            "name": "Traditional IRA",
+            "type": "traditional_ira",
+            "owner": "primary",
+            "balance": 0,
+            "cost_basis": None,
+            "growth_rate": 0.0,
+            "dividend_yield": 0.0,
+            "dividend_tax_treatment": "tax_free",
+            "reinvest_dividends": True,
+            "bond_allocation_percent": 40,
+            "yearly_fees": 0.0,
+            "allow_withdrawals": True,
+        },
+    ]
+    data["transfers"] = [
+        {
+            "name": "Impossible transfer",
+            "from_account": "Traditional IRA",
+            "to_account": "Cash",
+            "amount": 80000,
+            "frequency": "one_time",
+            "start_date": "2026-01",
+            "end_date": "2026-01",
+            "tax_treatment": "income",
+        }
+    ]
+    data["withdrawal_strategy"] = {
+        "order": ["cash", "traditional_ira"],
+        "account_specific_order": ["Cash", "Traditional IRA"],
+        "use_account_specific": True,
+        "rmd_satisfied_first": True,
+    }
+
+    path = write_plan(tmp_path, data)
+    plan = load_plan(path)
+    result = run_deterministic(plan)
+
+    ira_annual = result.account_annual["Traditional IRA"][0]
+    month = result.monthly[0]
+    assert ira_annual.withdrawals == 0
+    assert month.transfers == 0

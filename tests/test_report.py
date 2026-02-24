@@ -96,6 +96,12 @@ def test_insolvency_years_are_highlighted_in_report(tmp_path, sample_plan_dict):
             "spending_type": "essential",
         }
     ]
+    data["withdrawal_strategy"] = {
+        "order": ["cash"],
+        "account_specific_order": ["Cash"],
+        "use_account_specific": True,
+        "rmd_satisfied_first": True,
+    }
 
     plan_path = write_plan(tmp_path, data)
     output_path = tmp_path / "report.html"
@@ -525,3 +531,239 @@ def test_money_flow_tooltips_include_expense_components_and_transfer_paths(tmp_p
     assert "Expense: Groceries: $2,400" in text
     assert "Expense: Travel: $1,200" in text
     assert "Transfer: Fund brokerage (Cash -&gt; Brokerage): $3,600" in text
+
+
+def test_account_details_withdrawals_include_reason_breakdown(tmp_path, sample_plan_dict):
+    data = clone_plan(sample_plan_dict)
+    data["plan_settings"]["plan_start"] = "2026-01"
+    data["plan_settings"]["plan_end"] = "2026-01"
+    data["income"] = []
+    data["contributions"] = []
+    data["transfers"] = []
+    data["transactions"] = []
+    data["real_assets"] = []
+    data["healthcare"]["pre_medicare"] = []
+    data["healthcare"]["post_medicare"] = []
+    data["social_security"] = []
+    data["roth_conversions"] = []
+    data["rmds"] = {
+        "enabled": False,
+        "rmd_start_age": 73,
+        "accounts": [],
+        "destination_account": "Cash",
+    }
+    data["accounts"] = [
+        {
+            "name": "Cash",
+            "type": "cash",
+            "owner": "primary",
+            "balance": 1000,
+            "cost_basis": None,
+            "growth_rate": 0.0,
+            "dividend_yield": 0.0,
+            "dividend_tax_treatment": "tax_free",
+            "reinvest_dividends": False,
+            "bond_allocation_percent": 100,
+            "yearly_fees": 0.0,
+            "allow_withdrawals": True,
+        }
+    ]
+    data["expenses"] = [
+        {
+            "name": "Living costs",
+            "owner": "joint",
+            "amount": 1000,
+            "frequency": "monthly",
+            "start_date": "start",
+            "end_date": "end",
+            "change_over_time": "fixed",
+            "change_rate": None,
+            "spending_type": "essential",
+        }
+    ]
+    data["withdrawal_strategy"] = {
+        "order": ["cash"],
+        "account_specific_order": ["Cash"],
+        "use_account_specific": True,
+        "rmd_satisfied_first": True,
+    }
+
+    plan_path = write_plan(tmp_path, data)
+    output_path = tmp_path / "report.html"
+    code = main([str(plan_path), "--mode", "deterministic", "-o", str(output_path)])
+    assert code == 0
+
+    text = output_path.read_text(encoding="utf-8")
+    assert "Withdrawals: $1,000" in text
+    assert "Expenses paid: $1,000" in text
+
+
+def test_account_details_does_not_show_impossible_withdrawals_for_empty_account(tmp_path, sample_plan_dict):
+    data = clone_plan(sample_plan_dict)
+    data["plan_settings"]["plan_start"] = "2026-01"
+    data["plan_settings"]["plan_end"] = "2026-01"
+    data["income"] = []
+    data["expenses"] = []
+    data["contributions"] = []
+    data["transactions"] = []
+    data["real_assets"] = []
+    data["healthcare"]["pre_medicare"] = []
+    data["healthcare"]["post_medicare"] = []
+    data["social_security"] = []
+    data["roth_conversions"] = []
+    data["rmds"] = {
+        "enabled": False,
+        "rmd_start_age": 73,
+        "accounts": [],
+        "destination_account": "Cash",
+    }
+    data["accounts"] = [
+        {
+            "name": "Cash",
+            "type": "cash",
+            "owner": "primary",
+            "balance": 0,
+            "cost_basis": None,
+            "growth_rate": 0.0,
+            "dividend_yield": 0.0,
+            "dividend_tax_treatment": "tax_free",
+            "reinvest_dividends": False,
+            "bond_allocation_percent": 100,
+            "yearly_fees": 0.0,
+            "allow_withdrawals": True,
+        },
+        {
+            "name": "Traditional IRA",
+            "type": "traditional_ira",
+            "owner": "primary",
+            "balance": 0,
+            "cost_basis": None,
+            "growth_rate": 0.0,
+            "dividend_yield": 0.0,
+            "dividend_tax_treatment": "tax_free",
+            "reinvest_dividends": True,
+            "bond_allocation_percent": 40,
+            "yearly_fees": 0.0,
+            "allow_withdrawals": True,
+        },
+    ]
+    data["transfers"] = [
+        {
+            "name": "Impossible transfer",
+            "from_account": "Traditional IRA",
+            "to_account": "Cash",
+            "amount": 80000,
+            "frequency": "one_time",
+            "start_date": "2026-01",
+            "end_date": "2026-01",
+            "tax_treatment": "income",
+        }
+    ]
+    data["withdrawal_strategy"] = {
+        "order": ["cash", "traditional_ira"],
+        "account_specific_order": ["Cash", "Traditional IRA"],
+        "use_account_specific": True,
+        "rmd_satisfied_first": True,
+    }
+
+    plan_path = write_plan(tmp_path, data)
+    output_path = tmp_path / "report.html"
+    code = main([str(plan_path), "--mode", "deterministic", "-o", str(output_path)])
+    assert code == 0
+
+    text = output_path.read_text(encoding="utf-8")
+    assert "Withdrawals: $80,000" not in text
+
+
+def test_account_details_shows_contribution_breakdown_and_negative_contribution_outflow(tmp_path, sample_plan_dict):
+    data = clone_plan(sample_plan_dict)
+    data["plan_settings"]["plan_start"] = "2026-01"
+    data["plan_settings"]["plan_end"] = "2026-01"
+    data["expenses"] = []
+    data["transactions"] = []
+    data["real_assets"] = []
+    data["healthcare"]["pre_medicare"] = []
+    data["healthcare"]["post_medicare"] = []
+    data["social_security"] = []
+    data["transfers"] = []
+    data["roth_conversions"] = []
+    data["rmds"] = {
+        "enabled": False,
+        "rmd_start_age": 73,
+        "accounts": [],
+        "destination_account": "Cash",
+    }
+    data["income"] = [
+        {
+            "name": "Salary",
+            "owner": "primary",
+            "amount": 120000,
+            "frequency": "annual",
+            "start_date": "start",
+            "end_date": "end",
+            "change_over_time": "fixed",
+            "change_rate": None,
+            "tax_handling": "tax_exempt",
+            "withhold_percent": None,
+        }
+    ]
+    data["accounts"] = [
+        {
+            "name": "Cash",
+            "type": "cash",
+            "owner": "primary",
+            "balance": 0,
+            "cost_basis": None,
+            "growth_rate": 0.0,
+            "dividend_yield": 0.0,
+            "dividend_tax_treatment": "tax_free",
+            "reinvest_dividends": False,
+            "bond_allocation_percent": 100,
+            "yearly_fees": 0.0,
+            "allow_withdrawals": True,
+        },
+        {
+            "name": "401k",
+            "type": "401k",
+            "owner": "primary",
+            "balance": 0,
+            "cost_basis": None,
+            "growth_rate": 0.0,
+            "dividend_yield": 0.0,
+            "dividend_tax_treatment": "tax_free",
+            "reinvest_dividends": True,
+            "bond_allocation_percent": 20,
+            "yearly_fees": 0.0,
+            "allow_withdrawals": True,
+        },
+    ]
+    data["contributions"] = [
+        {
+            "name": "Primary 401k contribution",
+            "source_account": "income",
+            "destination_account": "401k",
+            "amount": 20000,
+            "frequency": "annual",
+            "start_date": "start",
+            "end_date": "end",
+            "change_over_time": "fixed",
+            "change_rate": None,
+            "employer_match": None,
+        }
+    ]
+    data["withdrawal_strategy"] = {
+        "order": ["cash", "401k"],
+        "account_specific_order": ["Cash", "401k"],
+        "use_account_specific": True,
+        "rmd_satisfied_first": True,
+    }
+
+    plan_path = write_plan(tmp_path, data)
+    output_path = tmp_path / "report.html"
+    code = main([str(plan_path), "--mode", "deterministic", "-o", str(output_path)])
+    assert code == 0
+
+    text = output_path.read_text(encoding="utf-8")
+    assert "Contrib: $10,000" in text
+    assert "Income: Salary: $10,000" in text
+    assert "Primary 401k contribution: -$10,000" in text
