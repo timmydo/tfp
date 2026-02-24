@@ -92,7 +92,8 @@ def _breakdown_lines(
 ) -> list[str]:
     if not reason_map:
         return []
-    ranked = sorted(reason_map.items(), key=lambda item: abs(item[1]), reverse=True)
+    non_zero = [(label, amount) for label, amount in reason_map.items() if abs(amount) > 0.01]
+    ranked = sorted(non_zero, key=lambda item: abs(item[1]), reverse=True)
     lines = [f"{label}: {_money(amount)}" for label, amount in ranked[:max_lines]]
     if len(ranked) > max_lines:
         lines.append(f"+{len(ranked) - max_lines} more components")
@@ -284,6 +285,7 @@ def _overview_panel(plan: Plan, plan_path: str) -> str:
 def _annual_financials_table(result: SimulationResult, detail: EngineResult) -> str:
     by_year = {row.year: row for row in detail.annual}
     withdrawals_by_year = detail.withdrawal_sources_by_year
+    income_reason_by_year = _yearly_reason_breakdown(detail, "income")
     expense_reason_by_year = _yearly_reason_breakdown(detail, "other_expenses")
     transfer_reason_by_year = _yearly_reason_breakdown(detail, "transfers")
     account_year_end: dict[int, list[tuple[str, float]]] = {}
@@ -300,63 +302,75 @@ def _annual_financials_table(result: SimulationResult, detail: EngineResult) -> 
         taxes = (d.tax_total if d and d.tax_total > 0 else (d.tax_withheld if d else 0.0))
         insolvent = "insolvent" if row.year in result.insolvency_years else ""
         note = "Insolvent" if row.year in result.insolvency_years else ""
-        expense_lines = [f"Total expenses: {_money(row.expenses)}"]
+        income_lines = _breakdown_lines(income_reason_by_year.get(row.year, {}))
+        expense_lines: list[str] = []
         if d:
-            expense_lines.extend(
-                [
-                    f"Healthcare: {_money(d.healthcare_expenses)}",
-                    f"Other expenses: {_money(d.other_expenses)}",
-                    f"Real-asset costs: {_money(d.real_asset_expenses)}",
-                ]
-            )
+            if abs(d.healthcare_expenses) > 0.01:
+                expense_lines.append(f"Healthcare: {_money(d.healthcare_expenses)}")
+            if abs(d.other_expenses) > 0.01:
+                expense_lines.append(f"Other expenses: {_money(d.other_expenses)}")
+            if abs(d.real_asset_expenses) > 0.01:
+                expense_lines.append(f"Real-asset costs: {_money(d.real_asset_expenses)}")
         expense_lines.extend(_breakdown_lines(expense_reason_by_year.get(row.year, {})))
         if d and d.tax_total > 0:
-            tax_lines = [
-                f"Tax shown: {_money(taxes)}",
-                f"Federal: {_money(d.tax_federal)}",
-                f"State: {_money(d.tax_state)}",
-                f"Capital gains: {_money(d.tax_capital_gains)}",
-                f"NIIT: {_money(d.tax_niit)}",
-                f"AMT: {_money(d.tax_amt)}",
-                f"Penalties: {_money(d.tax_penalties)}",
-                f"Withheld: {_money(d.tax_withheld)} | Estimated: {_money(d.tax_estimated_payments)}",
-                f"Settlement payment: {_money(d.tax_payment)} | Refund: {_money(d.tax_refund)}",
-            ]
+            tax_lines: list[str] = []
+            if abs(d.tax_federal) > 0.01:
+                tax_lines.append(f"Federal: {_money(d.tax_federal)}")
+            if abs(d.tax_state) > 0.01:
+                tax_lines.append(f"State: {_money(d.tax_state)}")
+            if abs(d.tax_capital_gains) > 0.01:
+                tax_lines.append(f"Capital gains: {_money(d.tax_capital_gains)}")
+            if abs(d.tax_niit) > 0.01:
+                tax_lines.append(f"NIIT: {_money(d.tax_niit)}")
+            if abs(d.tax_amt) > 0.01:
+                tax_lines.append(f"AMT: {_money(d.tax_amt)}")
+            if abs(d.tax_penalties) > 0.01:
+                tax_lines.append(f"Penalties: {_money(d.tax_penalties)}")
+            if abs(d.tax_withheld) > 0.01:
+                tax_lines.append(f"Withheld: {_money(d.tax_withheld)}")
+            if abs(d.tax_estimated_payments) > 0.01:
+                tax_lines.append(f"Estimated: {_money(d.tax_estimated_payments)}")
+            if abs(d.tax_payment) > 0.01:
+                tax_lines.append(f"Settlement payment: {_money(d.tax_payment)}")
+            if abs(d.tax_refund) > 0.01:
+                tax_lines.append(f"Refund: {_money(d.tax_refund)}")
         elif d:
-            tax_lines = [
-                f"Tax shown: {_money(taxes)}",
-                "Tax total was non-positive; showing withheld tax.",
-                f"Withheld: {_money(d.tax_withheld)} | Estimated: {_money(d.tax_estimated_payments)}",
-                f"Settlement payment: {_money(d.tax_payment)} | Refund: {_money(d.tax_refund)}",
-            ]
+            tax_lines = ["Tax total was non-positive; showing withheld tax."]
+            if abs(d.tax_withheld) > 0.01:
+                tax_lines.append(f"Withheld: {_money(d.tax_withheld)}")
+            if abs(d.tax_estimated_payments) > 0.01:
+                tax_lines.append(f"Estimated: {_money(d.tax_estimated_payments)}")
+            if abs(d.tax_payment) > 0.01:
+                tax_lines.append(f"Settlement payment: {_money(d.tax_payment)}")
+            if abs(d.tax_refund) > 0.01:
+                tax_lines.append(f"Refund: {_money(d.tax_refund)}")
         else:
-            tax_lines = [f"Tax shown: {_money(taxes)}"]
+            tax_lines = []
 
         withdrawal_total = d.withdrawals if d else 0.0
-        withdrawal_lines = [f"Total withdrawals: {_money(withdrawal_total)}"]
+        withdrawal_lines: list[str] = []
         by_account = sorted((withdrawals_by_year.get(row.year) or {}).items(), key=lambda item: abs(item[1]), reverse=True)
         if by_account:
-            withdrawal_lines.extend(f"Source {name}: {_money(amount)}" for name, amount in by_account)
+            withdrawal_lines.extend(f"Source {name}: {_money(amount)}" for name, amount in by_account if abs(amount) > 0.01)
 
         contribution_total = d.contributions if d else 0.0
-        contribution_lines = [f"Total contributions: {_money(contribution_total)}"]
+        contribution_lines: list[str] = []
         contrib_parts = sorted(account_contrib_by_year.get(row.year, []), key=lambda item: abs(item[1]), reverse=True)
         if contrib_parts:
             contribution_lines.extend(f"{name}: {_money(amount)}" for name, amount in contrib_parts)
 
         transfer_total = d.transfers if d else 0.0
-        transfer_lines = [f"Total recurring transfers: {_money(transfer_total)}"]
-        transfer_lines.extend(_breakdown_lines(transfer_reason_by_year.get(row.year, {})))
+        transfer_lines = _breakdown_lines(transfer_reason_by_year.get(row.year, {}))
 
-        net_worth_lines = [f"Net worth at year end: {_money(row.net_worth_end)}"]
+        net_worth_lines: list[str] = []
         ends = sorted(account_year_end.get(row.year, []), key=lambda item: abs(item[1]), reverse=True)
         if ends:
-            net_worth_lines.extend(f"{name}: {_money(amount)}" for name, amount in ends)
+            net_worth_lines.extend(f"{name}: {_money(amount)}" for name, amount in ends if abs(amount) > 0.01)
 
         rows.append(
             "<tr class=\"{}\">".format(insolvent)
             + f"<td>{row.year}</td>"
-            + _money_detail_cell(row.income, [f"Total annual income: {_money(row.income)}"])
+            + _money_detail_cell(row.income, income_lines)
             + _money_detail_cell(row.expenses, expense_lines)
             + _money_detail_cell(taxes, tax_lines)
             + _money_detail_cell(withdrawal_total, withdrawal_lines)
