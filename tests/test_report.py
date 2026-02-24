@@ -15,7 +15,7 @@ def test_report_html_includes_required_sections(tmp_path):
     assert "Annual Financials" in text
     assert "Account Details" in text
     assert "Account Balance View" in text
-    assert "Account Flow View" in text
+    assert "Account Activity View" in text
     assert "Taxes" in text
     assert "Calculation Log" in text
     assert "Plan Validation" in text
@@ -262,9 +262,9 @@ def test_account_flow_view_chart_and_monthly_table_values(tmp_path, sample_plan_
     assert code == 0
 
     text = output_path.read_text(encoding="utf-8")
-    assert re.search(r"<td>2026-01</td><td[^>]*>\$-400</td><td[^>]*>\$300</td>", text)
-    assert re.search(r"<td>2026-02</td><td[^>]*>\$-100</td><td[^>]*>\$0</td>", text)
-    assert re.search(r"<td>2026-03</td><td[^>]*>\$-100</td><td[^>]*>\$0</td>", text)
+    assert re.search(r"<td>2026-01</td>[\s\S]*?<div class=\"cell-main\">\$-400</div>[\s\S]*?<div class=\"cell-main\">\$300</div>", text)
+    assert re.search(r"<td>2026-02</td>[\s\S]*?<div class=\"cell-main\">\$-100</div>[\s\S]*?<div class=\"cell-main\">\$0</div>", text)
+    assert re.search(r"<td>2026-03</td>[\s\S]*?<div class=\"cell-main\">\$-100</div>[\s\S]*?<div class=\"cell-main\">\$0</div>", text)
     assert "Transfer out: Move to brokerage: $-300" in text
     assert "Transfer in: Move to brokerage: +$300" in text
 

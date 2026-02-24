@@ -342,9 +342,7 @@ def _annual_financials_table(result: SimulationResult, detail: EngineResult) -> 
         contribution_lines = [f"Total contributions: {_money(contribution_total)}"]
         contrib_parts = sorted(account_contrib_by_year.get(row.year, []), key=lambda item: abs(item[1]), reverse=True)
         if contrib_parts:
-            contribution_lines.extend(f"{name}: {_money(amount)}" for name, amount in contrib_parts[:8])
-            if len(contrib_parts) > 8:
-                contribution_lines.append(f"+{len(contrib_parts) - 8} more accounts")
+            contribution_lines.extend(f"{name}: {_money(amount)}" for name, amount in contrib_parts)
 
         transfer_total = d.transfers if d else 0.0
         transfer_lines = [f"Total recurring transfers: {_money(transfer_total)}"]
@@ -353,10 +351,7 @@ def _annual_financials_table(result: SimulationResult, detail: EngineResult) -> 
         net_worth_lines = [f"Net worth at year end: {_money(row.net_worth_end)}"]
         ends = sorted(account_year_end.get(row.year, []), key=lambda item: abs(item[1]), reverse=True)
         if ends:
-            shown = ends[:8]
-            net_worth_lines.extend(f"{name}: {_money(amount)}" for name, amount in shown)
-            if len(ends) > 8:
-                net_worth_lines.append(f"+{len(ends) - 8} more accounts")
+            net_worth_lines.extend(f"{name}: {_money(amount)}" for name, amount in ends)
 
         rows.append(
             "<tr class=\"{}\">".format(insolvent)
@@ -382,31 +377,44 @@ def _annual_financials_table(result: SimulationResult, detail: EngineResult) -> 
 
 
 def _account_detail_tables(detail: EngineResult) -> str:
-    sections: list[str] = []
-    for account_name in sorted(detail.account_annual):
-        rows = []
-        for row in detail.account_annual[account_name]:
-            rows.append(
-                "<tr>"
-                + f"<td>{row.year}</td>"
-                + f"<td>{_money(row.starting_balance)}</td>"
-                + f"<td>{_money(row.growth)}</td>"
-                + f"<td>{_money(row.dividends)}</td>"
-                + f"<td>{_money(row.contributions)}</td>"
-                + f"<td>{_money(row.withdrawals)}</td>"
-                + f"<td>{_money(row.fees)}</td>"
-                + f"<td>{_money(row.ending_balance)}</td>"
-                + "</tr>"
-            )
-        sections.append(
-            f"<h3>{html.escape(account_name)}</h3>"
-            + "<table><thead><tr>"
-            + "<th>Year</th><th>Starting</th><th>Growth</th><th>Dividends</th><th>Contributions</th><th>Withdrawals</th><th>Fees</th><th>Ending</th>"
-            + "</tr></thead><tbody>"
-            + "".join(rows)
-            + "</tbody></table>"
-        )
-    return "".join(sections)
+    account_names = sorted(detail.account_annual)
+    if not account_names:
+        return "<p class=\"subtle\">No account annual details were generated.</p>"
+
+    by_account_year = {
+        account_name: {row.year: row for row in rows}
+        for account_name, rows in detail.account_annual.items()
+    }
+    years = sorted({row.year for rows in detail.account_annual.values() for row in rows})
+    header = "".join(f"<th>{html.escape(name)}</th>" for name in account_names)
+
+    table_rows: list[str] = []
+    for year in years:
+        cells: list[str] = [f"<td>{year}</td>"]
+        for account_name in account_names:
+            row = by_account_year.get(account_name, {}).get(year)
+            if row is None:
+                cells.append("<td>-</td>")
+                continue
+            detail_lines = [
+                f"Start: {_money(row.starting_balance)}",
+                f"Growth: {_money(row.growth)}",
+                f"Dividends: {_money(row.dividends)}",
+                f"Contrib: {_money(row.contributions)}",
+                f"Withdrawals: {_money(row.withdrawals)}",
+                f"Fees: {_money(row.fees)}",
+            ]
+            cells.append(_money_detail_cell(row.ending_balance, detail_lines))
+        table_rows.append(f"<tr>{''.join(cells)}</tr>")
+
+    table_html = (
+        "<table><thead><tr><th>Year</th>"
+        + header
+        + "</tr></thead><tbody>"
+        + "".join(table_rows)
+        + "</tbody></table>"
+    )
+    return f'<div class="table-wrap">{table_html}</div>'
 
 
 def _calculation_log_table(detail: EngineResult) -> str:
@@ -458,11 +466,11 @@ def _monthly_tax_table(detail: EngineResult) -> str:
         rows.append(
             "<tr>"
             + f"<td>{ym}</td>"
-            + _money_cell(row.tax_fica_withheld, reasons.get("tax_withheld", []))
-            + _money_cell(row.tax_income_withheld, reasons.get("tax_withheld", []))
-            + _money_cell(row.tax_estimated_payment, reasons.get("tax_estimated", []))
-            + _money_cell(row.tax_settlement, reasons.get("tax_settlement", []))
-            + _money_cell(net_tax_paid, reasons.get("tax_settlement", []) + reasons.get("tax_estimated", []))
+            + _money_detail_cell(row.tax_fica_withheld, reasons.get("tax_withheld", []))
+            + _money_detail_cell(row.tax_income_withheld, reasons.get("tax_withheld", []))
+            + _money_detail_cell(row.tax_estimated_payment, reasons.get("tax_estimated", []))
+            + _money_detail_cell(row.tax_settlement, reasons.get("tax_settlement", []))
+            + _money_detail_cell(net_tax_paid, reasons.get("tax_settlement", []) + reasons.get("tax_estimated", []))
             + "</tr>"
         )
     table_html = (
@@ -533,8 +541,8 @@ def _account_flow_monthly_table(plan: Plan, detail: EngineResult) -> str:
             current = float(month.account_balances_end.get(name, 0.0))
             delta = current - prev_balances.get(name, 0.0)
             prev_balances[name] = current
-            tooltip_lines = _account_reason_lines(month.account_flow_reasons.get(name, {}))
-            cells.append(_money_cell(delta, tooltip_lines))
+            detail_lines = _account_reason_lines(month.account_flow_reasons.get(name, {}))
+            cells.append(_money_detail_cell(delta, detail_lines))
         rows.append(f"<tr><td>{ym}</td>{''.join(cells)}</tr>")
 
     table_html = (
