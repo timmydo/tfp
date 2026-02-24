@@ -88,7 +88,6 @@ def _yearly_reason_breakdown(detail: EngineResult, metric: str) -> dict[int, dic
 def _breakdown_lines(
     reason_map: dict[str, float],
     *,
-    max_lines: int = 8,
     strip_prefixes: tuple[str, ...] = (),
 ) -> list[str]:
     if not reason_map:
@@ -96,25 +95,23 @@ def _breakdown_lines(
     non_zero = [(label, amount) for label, amount in reason_map.items() if abs(amount) > 0.01]
     ranked = sorted(non_zero, key=lambda item: abs(item[1]), reverse=True)
     lines: list[str] = []
-    for label, amount in ranked[:max_lines]:
+    for label, amount in ranked:
         cleaned = label
         for prefix in strip_prefixes:
             if cleaned.startswith(prefix):
                 cleaned = cleaned[len(prefix) :]
                 break
         lines.append(f"{cleaned}: {_money(amount)}")
-    if len(ranked) > max_lines:
-        lines.append(f"+{len(ranked) - max_lines} more components")
     return lines
 
 
-def _withdrawal_breakdown_lines(reason_map: dict[str, float], *, max_lines: int = 8) -> list[str]:
+def _withdrawal_breakdown_lines(reason_map: dict[str, float]) -> list[str]:
     if not reason_map:
         return []
     non_zero = [(label, amount) for label, amount in reason_map.items() if abs(amount) > 0.01]
     ranked = sorted(non_zero, key=lambda item: abs(item[1]), reverse=True)
     lines: list[str] = []
-    for label, amount in ranked[:max_lines]:
+    for label, amount in ranked:
         cleaned = label
         display_amount = amount
         if cleaned.startswith("Contribution out: "):
@@ -128,8 +125,6 @@ def _withdrawal_breakdown_lines(reason_map: dict[str, float], *, max_lines: int 
         else:
             amount_text = _money(display_amount)
         lines.append(f"{cleaned}: {amount_text}")
-    if len(ranked) > max_lines:
-        lines.append(f"+{len(ranked) - max_lines} more components")
     return lines
 
 
@@ -484,13 +479,13 @@ def _account_detail_tables(plan: Plan, detail: EngineResult) -> str:
                 contribution_reasons = (
                     detail.account_contribution_reasons_by_year.get(account_name, {}).get(year, {})
                 )
-                detail_lines.extend(_breakdown_lines(contribution_reasons, max_lines=6))
+                detail_lines.extend(_breakdown_lines(contribution_reasons))
             if abs(row.withdrawals) > 0.01:
                 detail_lines.append(f"Withdrawals: {_money(row.withdrawals)}")
                 withdrawal_reasons = (
                     detail.account_withdrawal_reasons_by_year.get(account_name, {}).get(year, {})
                 )
-                detail_lines.extend(_withdrawal_breakdown_lines(withdrawal_reasons, max_lines=6))
+                detail_lines.extend(_withdrawal_breakdown_lines(withdrawal_reasons))
             if abs(row.fees) > 0.01:
                 detail_lines.append(f"Fees: {_money(row.fees)}")
             delta_html = ""
