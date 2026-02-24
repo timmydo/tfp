@@ -89,15 +89,34 @@ def _breakdown_lines(
     reason_map: dict[str, float],
     *,
     max_lines: int = 8,
+    strip_prefixes: tuple[str, ...] = (),
 ) -> list[str]:
     if not reason_map:
         return []
     non_zero = [(label, amount) for label, amount in reason_map.items() if abs(amount) > 0.01]
     ranked = sorted(non_zero, key=lambda item: abs(item[1]), reverse=True)
-    lines = [f"{label}: {_money(amount)}" for label, amount in ranked[:max_lines]]
+    lines: list[str] = []
+    for label, amount in ranked[:max_lines]:
+        cleaned = label
+        for prefix in strip_prefixes:
+            if cleaned.startswith(prefix):
+                cleaned = cleaned[len(prefix) :]
+                break
+        lines.append(f"{cleaned}: {_money(amount)}")
     if len(ranked) > max_lines:
         lines.append(f"+{len(ranked) - max_lines} more components")
     return lines
+
+
+def _yearly_withheld_breakdown(detail: EngineResult) -> dict[int, tuple[float, float]]:
+    by_year: dict[int, tuple[float, float]] = {}
+    for row in detail.monthly:
+        existing_fica, existing_income = by_year.get(row.year, (0.0, 0.0))
+        by_year[row.year] = (
+            existing_fica + row.tax_fica_withheld,
+            existing_income + row.tax_income_withheld,
+        )
+    return by_year
 
 
 def _pct(value: float | None) -> str:
@@ -303,6 +322,7 @@ def _annual_financials_table(plan: Plan, result: SimulationResult, detail: Engin
     expense_reason_by_year = _yearly_reason_breakdown(detail, "other_expenses")
     contribution_reason_by_year = _yearly_reason_breakdown(detail, "contributions")
     transfer_reason_by_year = _yearly_reason_breakdown(detail, "transfers")
+    withheld_by_year = _yearly_withheld_breakdown(detail)
     account_year_end: dict[int, list[tuple[str, float]]] = {}
     for account_name, rows in detail.account_annual.items():
         for r in rows:
@@ -334,6 +354,11 @@ def _annual_financials_table(plan: Plan, result: SimulationResult, detail: Engin
                 tax_lines.append(f"Penalties: {_money(d.tax_penalties)}")
             if abs(d.tax_withheld) > 0.01:
                 tax_lines.append(f"Withheld: {_money(d.tax_withheld)}")
+                withheld_fica, withheld_income = withheld_by_year.get(row.year, (0.0, 0.0))
+                if abs(withheld_fica) > 0.01:
+                    tax_lines.append(f"Withheld (FICA): {_money(withheld_fica)}")
+                if abs(withheld_income) > 0.01:
+                    tax_lines.append(f"Withheld (Income tax): {_money(withheld_income)}")
             if abs(d.tax_estimated_payments) > 0.01:
                 tax_lines.append(f"Estimated: {_money(d.tax_estimated_payments)}")
             if abs(d.tax_payment) > 0.01:
@@ -344,6 +369,11 @@ def _annual_financials_table(plan: Plan, result: SimulationResult, detail: Engin
             tax_lines = ["Tax total was non-positive; showing withheld tax."]
             if abs(d.tax_withheld) > 0.01:
                 tax_lines.append(f"Withheld: {_money(d.tax_withheld)}")
+                withheld_fica, withheld_income = withheld_by_year.get(row.year, (0.0, 0.0))
+                if abs(withheld_fica) > 0.01:
+                    tax_lines.append(f"Withheld (FICA): {_money(withheld_fica)}")
+                if abs(withheld_income) > 0.01:
+                    tax_lines.append(f"Withheld (Income tax): {_money(withheld_income)}")
             if abs(d.tax_estimated_payments) > 0.01:
                 tax_lines.append(f"Estimated: {_money(d.tax_estimated_payments)}")
             if abs(d.tax_payment) > 0.01:
@@ -360,7 +390,10 @@ def _annual_financials_table(plan: Plan, result: SimulationResult, detail: Engin
             withdrawal_lines.extend(f"Source {name}: {_money(amount)}" for name, amount in by_account if abs(amount) > 0.01)
 
         contribution_total = d.contributions if d else 0.0
-        contribution_lines = _breakdown_lines(contribution_reason_by_year.get(row.year, {}))
+        contribution_lines = _breakdown_lines(
+            contribution_reason_by_year.get(row.year, {}),
+            strip_prefixes=("Contribution: ",),
+        )
 
         transfer_total = d.transfers if d else 0.0
         transfer_lines = _breakdown_lines(transfer_reason_by_year.get(row.year, {}))

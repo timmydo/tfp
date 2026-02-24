@@ -329,6 +329,87 @@ def test_annual_financials_contributions_do_not_show_account_inflows_when_total_
     assert "cell-breakdown" not in contributions_cell
 
 
+def test_annual_financials_breaks_out_withheld_tax_and_cleans_contribution_prefixes(tmp_path, sample_plan_dict):
+    data = clone_plan(sample_plan_dict)
+    data["plan_settings"]["plan_start"] = "2026-01"
+    data["plan_settings"]["plan_end"] = "2026-12"
+    data["income"] = [
+        {
+            "name": "Salary",
+            "owner": "primary",
+            "amount": 180000,
+            "frequency": "annual",
+            "start_date": "start",
+            "end_date": "end",
+            "change_over_time": "fixed",
+            "change_rate": None,
+            "tax_handling": "withhold",
+            "withhold_percent": 0.25,
+        }
+    ]
+    data["contributions"] = [
+        {
+            "name": "Primary 401k contribution",
+            "source_account": "income",
+            "destination_account": "Alex 401k",
+            "amount": 23500,
+            "frequency": "annual",
+            "start_date": "start",
+            "end_date": "end",
+            "change_over_time": "fixed",
+            "change_rate": None,
+            "employer_match": None,
+        },
+        {
+            "name": "HSA contribution",
+            "source_account": "income",
+            "destination_account": "Family HSA",
+            "amount": 8550,
+            "frequency": "annual",
+            "start_date": "start",
+            "end_date": "end",
+            "change_over_time": "fixed",
+            "change_rate": None,
+            "employer_match": None,
+        },
+    ]
+    data["transfers"] = []
+    data["transactions"] = []
+    data["social_security"] = []
+    data["roth_conversions"] = []
+    data["rmds"] = {
+        "enabled": False,
+        "rmd_start_age": 73,
+        "accounts": [],
+        "destination_account": "Joint Checking",
+    }
+
+    plan_path = write_plan(tmp_path, data)
+    output_path = tmp_path / "report.html"
+    code = main([str(plan_path), "--mode", "deterministic", "-o", str(output_path)])
+    assert code == 0
+
+    text = output_path.read_text(encoding="utf-8")
+    annual_table_match = re.search(
+        r"<table><thead><tr><th>Year \(Age\)</th><th>Income</th><th>Expenses</th><th>Taxes</th><th>Withdrawals</th>"
+        r"<th>Contributions</th><th>Transfers</th><th>Net Worth</th><th>Notes</th></tr></thead><tbody>(.*?)</tbody></table>",
+        text,
+        re.DOTALL,
+    )
+    assert annual_table_match is not None
+    annual_rows_html = annual_table_match.group(1)
+    row_match = re.search(r"<tr[^>]*>.*?<td>2026 \([^)]+\)</td>.*?</tr>", annual_rows_html, re.DOTALL)
+    assert row_match is not None
+    row_html = row_match.group(0)
+
+    assert "Withheld (FICA): $" in row_html
+    assert "Withheld (Income tax): $" in row_html
+    assert "Contribution: Primary 401k contribution" not in row_html
+    assert "Contribution: HSA contribution" not in row_html
+    assert "Primary 401k contribution: $" in row_html
+    assert "HSA contribution: $" in row_html
+
+
 def test_money_flow_tooltips_include_expense_components_and_transfer_paths(tmp_path, sample_plan_dict):
     data = clone_plan(sample_plan_dict)
     data["plan_settings"]["plan_start"] = "2026-01"
