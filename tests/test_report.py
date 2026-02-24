@@ -271,6 +271,64 @@ def test_account_flow_view_chart_and_monthly_table_values(tmp_path, sample_plan_
     assert "const payload =" not in text
 
 
+def test_annual_financials_contributions_do_not_show_account_inflows_when_total_is_zero(
+    tmp_path,
+    sample_plan_dict,
+):
+    data = clone_plan(sample_plan_dict)
+    data["plan_settings"]["plan_start"] = "2026-01"
+    data["plan_settings"]["plan_end"] = "2027-12"
+    data["contributions"] = []
+    data["income"] = [
+        {
+            "name": "Salary",
+            "owner": "primary",
+            "amount": 150000,
+            "frequency": "annual",
+            "start_date": "start",
+            "end_date": "end",
+            "change_over_time": "fixed",
+            "change_rate": None,
+            "tax_handling": "withhold",
+            "withhold_percent": 0.2,
+        }
+    ]
+    data["transfers"] = []
+    data["transactions"] = []
+    data["social_security"] = []
+    data["roth_conversions"] = []
+    data["rmds"] = {
+        "enabled": False,
+        "rmd_start_age": 73,
+        "accounts": [],
+        "destination_account": "Joint Checking",
+    }
+
+    plan_path = write_plan(tmp_path, data)
+    output_path = tmp_path / "report.html"
+    code = main([str(plan_path), "--mode", "deterministic", "-o", str(output_path)])
+    assert code == 0
+
+    text = output_path.read_text(encoding="utf-8")
+    annual_table_match = re.search(
+        r"<table><thead><tr><th>Year \(Age\)</th><th>Income</th><th>Expenses</th><th>Taxes</th><th>Withdrawals</th>"
+        r"<th>Contributions</th><th>Transfers</th><th>Net Worth</th><th>Notes</th></tr></thead><tbody>(.*?)</tbody></table>",
+        text,
+        re.DOTALL,
+    )
+    assert annual_table_match is not None
+    annual_rows_html = annual_table_match.group(1)
+    row_match = re.search(r"<tr[^>]*>.*?<td>2026 \([^)]+\)</td>.*?</tr>", annual_rows_html, re.DOTALL)
+    assert row_match is not None
+    row_html = row_match.group(0)
+    cells = re.findall(r"<td(?: [^>]*)?>.*?</td>", row_html)
+    assert len(cells) >= 6
+    contributions_cell = cells[5]
+
+    assert "<div class=\"cell-main\">$0</div>" in contributions_cell
+    assert "cell-breakdown" not in contributions_cell
+
+
 def test_money_flow_tooltips_include_expense_components_and_transfer_paths(tmp_path, sample_plan_dict):
     data = clone_plan(sample_plan_dict)
     data["plan_settings"]["plan_start"] = "2026-01"

@@ -301,14 +301,12 @@ def _annual_financials_table(plan: Plan, result: SimulationResult, detail: Engin
     withdrawals_by_year = detail.withdrawal_sources_by_year
     income_reason_by_year = _yearly_reason_breakdown(detail, "income")
     expense_reason_by_year = _yearly_reason_breakdown(detail, "other_expenses")
+    contribution_reason_by_year = _yearly_reason_breakdown(detail, "contributions")
     transfer_reason_by_year = _yearly_reason_breakdown(detail, "transfers")
     account_year_end: dict[int, list[tuple[str, float]]] = {}
-    account_contrib_by_year: dict[int, list[tuple[str, float]]] = {}
     for account_name, rows in detail.account_annual.items():
         for r in rows:
             account_year_end.setdefault(r.year, []).append((account_name, r.ending_balance))
-            if abs(r.contributions) > 0.01:
-                account_contrib_by_year.setdefault(r.year, []).append((account_name, r.contributions))
 
     rows: list[str] = []
     for row in result.annual:
@@ -317,15 +315,9 @@ def _annual_financials_table(plan: Plan, result: SimulationResult, detail: Engin
         insolvent = "insolvent" if row.year in result.insolvency_years else ""
         note = "Insolvent" if row.year in result.insolvency_years else ""
         income_lines = _breakdown_lines(income_reason_by_year.get(row.year, {}))
-        expense_lines: list[str] = []
-        if d:
-            if abs(d.healthcare_expenses) > 0.01:
-                expense_lines.append(f"Healthcare: {_money(d.healthcare_expenses)}")
-            if abs(d.other_expenses) > 0.01:
-                expense_lines.append(f"Other expenses: {_money(d.other_expenses)}")
-            if abs(d.real_asset_expenses) > 0.01:
-                expense_lines.append(f"Real-asset costs: {_money(d.real_asset_expenses)}")
-        expense_lines.extend(_breakdown_lines(expense_reason_by_year.get(row.year, {})))
+        expense_lines = _breakdown_lines(expense_reason_by_year.get(row.year, {}))
+        if d and not expense_lines and abs(row.expenses) > 0.01:
+            expense_lines = [f"Total expenses: {_money(row.expenses)}"]
         if d and d.tax_total > 0:
             tax_lines: list[str] = []
             if abs(d.tax_federal) > 0.01:
@@ -368,10 +360,7 @@ def _annual_financials_table(plan: Plan, result: SimulationResult, detail: Engin
             withdrawal_lines.extend(f"Source {name}: {_money(amount)}" for name, amount in by_account if abs(amount) > 0.01)
 
         contribution_total = d.contributions if d else 0.0
-        contribution_lines: list[str] = []
-        contrib_parts = sorted(account_contrib_by_year.get(row.year, []), key=lambda item: abs(item[1]), reverse=True)
-        if contrib_parts:
-            contribution_lines.extend(f"{name}: {_money(amount)}" for name, amount in contrib_parts)
+        contribution_lines = _breakdown_lines(contribution_reason_by_year.get(row.year, {}))
 
         transfer_total = d.transfers if d else 0.0
         transfer_lines = _breakdown_lines(transfer_reason_by_year.get(row.year, {}))

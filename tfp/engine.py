@@ -817,14 +817,14 @@ def run_deterministic(
                     month_real_asset_expenses += maintenance.amount
                     _add_calculation_reason(
                         "other_expenses",
-                        f"Maintenance ({state.asset.name}, monthly): {maintenance.name}",
+                        maintenance.name,
                         maintenance.amount,
                     )
                 elif maintenance.frequency == "annual" and month == 1:
                     month_real_asset_expenses += maintenance.amount
                     _add_calculation_reason(
                         "other_expenses",
-                        f"Maintenance ({state.asset.name}, annual): {maintenance.name}",
+                        maintenance.name,
                         maintenance.amount,
                     )
 
