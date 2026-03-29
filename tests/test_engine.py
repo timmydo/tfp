@@ -1,5 +1,6 @@
 from tests.helpers import clone_plan, write_plan
 from tfp.engine import run_deterministic
+from tfp.real_assets import change_rate_for_year
 from tfp.schema import load_plan
 
 
@@ -384,3 +385,166 @@ def test_transfer_with_insufficient_source_balance_does_not_record_impossible_wi
     month = result.monthly[0]
     assert ira_annual.withdrawals == 0
     assert month.transfers == 0
+
+
+def test_change_rate_for_year_handles_decrease():
+    assert change_rate_for_year("decrease", 0.05, 0.03) == -0.05
+    assert change_rate_for_year("decrease", None, 0.03) == 0.0
+
+
+def test_investment_income_feeds_niit(tmp_path, sample_plan_dict):
+    """Dividends taxed as 'income' should appear in investment_income and affect NIIT."""
+    data = clone_plan(sample_plan_dict)
+    data["plan_settings"]["plan_start"] = "2026-01"
+    data["plan_settings"]["plan_end"] = "2026-12"
+    data["income"] = [
+        {
+            "name": "Salary",
+            "owner": "primary",
+            "amount": 300000,
+            "frequency": "annual",
+            "start_date": "start",
+            "end_date": "end",
+            "change_over_time": "fixed",
+            "change_rate": None,
+            "tax_handling": "withhold",
+            "withhold_percent": 0.25,
+        }
+    ]
+    data["expenses"] = []
+    data["contributions"] = []
+    data["transfers"] = []
+    data["transactions"] = []
+    data["real_assets"] = []
+    data["healthcare"]["pre_medicare"] = []
+    data["healthcare"]["post_medicare"] = []
+    data["roth_conversions"] = []
+    data["social_security"] = []
+    data["accounts"] = [
+        {
+            "name": "Cash",
+            "type": "cash",
+            "owner": "primary",
+            "balance": 50000,
+            "cost_basis": None,
+            "growth_rate": 0.0,
+            "dividend_yield": 0.0,
+            "dividend_tax_treatment": "tax_free",
+            "reinvest_dividends": False,
+            "bond_allocation_percent": 100,
+            "yearly_fees": 0.0,
+            "allow_withdrawals": True,
+        },
+        {
+            "name": "Taxable",
+            "type": "taxable_brokerage",
+            "owner": "primary",
+            "balance": 500000,
+            "cost_basis": 500000,
+            "growth_rate": 0.0,
+            "dividend_yield": 0.06,
+            "dividend_tax_treatment": "income",
+            "reinvest_dividends": True,
+            "bond_allocation_percent": 0,
+            "yearly_fees": 0.0,
+            "allow_withdrawals": True,
+        },
+    ]
+    data["withdrawal_strategy"] = {
+        "order": ["cash", "taxable_brokerage"],
+        "account_specific_order": ["Cash", "Taxable"],
+        "use_account_specific": True,
+        "rmd_satisfied_first": True,
+    }
+    data["rmds"] = {
+        "enabled": False,
+        "rmd_start_age": 73,
+        "accounts": [],
+        "destination_account": "Cash",
+    }
+    data["tax_settings"]["niit_enabled"] = True
+
+    path = write_plan(tmp_path, data)
+    plan = load_plan(path)
+    result = run_deterministic(plan)
+
+    annual = result.annual[0]
+    assert annual.investment_income > 0
+    assert annual.tax_niit > 0
+
+
+def test_transfer_capital_gains_non_brokerage(tmp_path, sample_plan_dict):
+    """Transfer with tax_treatment 'capital_gains' from non-brokerage should record gains."""
+    data = clone_plan(sample_plan_dict)
+    data["plan_settings"]["plan_start"] = "2026-01"
+    data["plan_settings"]["plan_end"] = "2026-12"
+    data["income"] = []
+    data["expenses"] = []
+    data["contributions"] = []
+    data["transactions"] = []
+    data["real_assets"] = []
+    data["healthcare"]["pre_medicare"] = []
+    data["healthcare"]["post_medicare"] = []
+    data["roth_conversions"] = []
+    data["social_security"] = []
+    data["accounts"] = [
+        {
+            "name": "Cash",
+            "type": "cash",
+            "owner": "primary",
+            "balance": 0,
+            "cost_basis": None,
+            "growth_rate": 0.0,
+            "dividend_yield": 0.0,
+            "dividend_tax_treatment": "tax_free",
+            "reinvest_dividends": False,
+            "bond_allocation_percent": 100,
+            "yearly_fees": 0.0,
+            "allow_withdrawals": True,
+        },
+        {
+            "name": "Other Account",
+            "type": "other",
+            "owner": "primary",
+            "balance": 100000,
+            "cost_basis": None,
+            "growth_rate": 0.0,
+            "dividend_yield": 0.0,
+            "dividend_tax_treatment": "tax_free",
+            "reinvest_dividends": False,
+            "bond_allocation_percent": 0,
+            "yearly_fees": 0.0,
+            "allow_withdrawals": True,
+        },
+    ]
+    data["transfers"] = [
+        {
+            "name": "CG transfer",
+            "from_account": "Other Account",
+            "to_account": "Cash",
+            "amount": 50000,
+            "frequency": "one_time",
+            "start_date": "2026-01",
+            "end_date": "2026-01",
+            "tax_treatment": "capital_gains",
+        }
+    ]
+    data["withdrawal_strategy"] = {
+        "order": ["cash", "other"],
+        "account_specific_order": ["Cash", "Other Account"],
+        "use_account_specific": True,
+        "rmd_satisfied_first": True,
+    }
+    data["rmds"] = {
+        "enabled": False,
+        "rmd_start_age": 73,
+        "accounts": [],
+        "destination_account": "Cash",
+    }
+
+    path = write_plan(tmp_path, data)
+    plan = load_plan(path)
+    result = run_deterministic(plan)
+
+    annual = result.annual[0]
+    assert annual.realized_capital_gains >= 50000

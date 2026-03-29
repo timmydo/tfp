@@ -25,6 +25,8 @@ def change_rate_for_year(change_over_time: str, change_rate: float | None, infla
         return 0.0
     if change_over_time == "increase":
         return change_rate or 0.0
+    if change_over_time == "decrease":
+        return -(change_rate or 0.0)
     if change_over_time == "match_inflation":
         return inflation_rate
     if change_over_time == "inflation_plus":

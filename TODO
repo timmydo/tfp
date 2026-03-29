@@ -1,10 +1,72 @@
 Remaining work
 
-1. Optional hardening
+1. Bugs — DONE
 
-- Extend numeric range validation coverage to all remaining percent/rate fields not yet bounded.
-- Audit any remaining TODO/FIXME comments.
+1a. FIXED: Added "decrease" handler to real_assets.py:change_rate_for_year.
+1b. FIXED: Tracked investment_income in engine.py for correct NIIT computation.
+1c. FIXED: Added capital_gains branch for non-brokerage transfers in engine.py.
+
+2. Undocumented simplifications (add to AGENTS.md "Stated Simplifications")
+
+2a. Social Security benefits are 85% taxable (flat). engine.py:566.
+    Real law uses a provisional-income formula that can result in 0%/50%/85% taxable.
+    Current approach overtaxes low-income retirees.
+
+2b. NIIT thresholds are inflation-indexed in code (tax.py:184).
+    Real law: $200K/$250K/$125K thresholds are fixed, not indexed.
+    Code inflates them, undertaxing high earners in future years.
+
+2c. Additional Medicare tax thresholds are inflation-indexed (tax.py:251-256).
+    Same issue as 2b: $200K/$250K/$125K are fixed in real law.
+
+2d. Plans ending mid-year get no year-end tax settlement (engine.py:1181).
+    Tax settlement only fires in month==12. Partial years use withholding as proxy.
+
+2e. All dollar amounts are in plan-start-year dollars.
+    _amount_for_month inflates from plan_start, not from each item's start_date.
+
+3. Spec gaps
+
+3a. Mortgage end_date is parsed (schema.py:324) but never enforced.
+    real_assets.py:mortgage_payment only stops when balance <= 0.
+    If amortization doesn't reach zero by end_date, payments continue past it.
+    Fix: check current_index against mortgage.end_date in the engine's step 14.
+
+3b. buy_asset transactions don't create RealAssetState.
+    engine.py:940-947 debits cash but the purchased asset gets no appreciation,
+    property tax, or maintenance tracking for the remainder of the plan.
+    Fix: create a RealAssetState entry from the transaction's linked_asset or
+    accept that buy_asset is cash-outflow-only (and document that).
+
+3c. rmd_start_age not validated. validate.py never checks its range.
+    Users can set it to 50 or 200 without error. Divisor table covers 73-120;
+    ages below 73 silently produce 0 RMD.
+    Fix: add _check_range for rmd_start_age (min=59, max=120 or similar).
+
+4. Validation hardening (from original TODO)
+
+Extend numeric range validation to all remaining percent/rate fields:
+  - growth_rate (sensible bounds, e.g. -1.0 to 1.0)
+  - dividend_yield (>= 0)
+  - inflation_rate (>= 0, <= 0.20)
+  - property_tax_rate (>= 0, <= 0.10)
+  - mortgage interest_rate (>= 0, <= 0.20)
+  - rmd_start_age (>= 59, <= 120)
+  - claiming_age_years / fra_age_years (>= 50, <= 100)
+  - pia_at_fra (>= 0)
+  - all amount fields (>= 0)
+  - transaction fees (>= 0)
+
+5. Code duplication (cleanup, not blocking)
+
+These helpers are duplicated with identical logic across modules:
+  - _change_multiplier: engine.py, healthcare.py
+  - _date_index: engine.py, healthcare.py, roth.py
+  - _year_factor: tax.py, healthcare.py, roth.py
+  - _is_active: engine.py, healthcare.py
+Consider extracting to a shared utils.py.
 
 Notes:
 - Keep JSON-path-specific validation error quality.
 - Preserve documented simplifications unless intentionally upgraded with tests.
+- Run `python3 -m pytest -q` before committing any fix.

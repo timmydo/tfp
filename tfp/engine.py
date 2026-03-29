@@ -70,6 +70,7 @@ class AnnualResult:
     fees: float = 0.0
     taxable_ordinary_income: float = 0.0
     qualified_dividends: float = 0.0
+    investment_income: float = 0.0
     tax_federal: float = 0.0
     tax_capital_gains: float = 0.0
     tax_state: float = 0.0
@@ -430,6 +431,7 @@ def run_deterministic(
         month_tax_settlement = 0.0
         month_taxable_ordinary_income = 0.0
         month_qualified_dividends = 0.0
+        month_investment_income = 0.0
         insolvent = False
         month_withdrawal_sources: dict[str, float] = {}
         month_calculation_reasons: dict[str, list[str]] = {}
@@ -693,6 +695,14 @@ def run_deterministic(
                     )
             elif transfer.tax_treatment == "income":
                 month_taxable_ordinary_income += amount
+            elif transfer.tax_treatment == "capital_gains":
+                month_realized_cg += amount
+                if amount > 0:
+                    _add_calculation_reason(
+                        "realized_capital_gains",
+                        f"Realized gains from transfer: {transfer.name}",
+                        amount,
+                    )
             if to_account.type == "taxable_brokerage" and transfer.to_account in cost_basis:
                 cost_basis[transfer.to_account].add_basis(amount)
 
@@ -824,6 +834,7 @@ def run_deterministic(
                 dividend_treatment = plan.plan_settings.default_dividend_tax_treatment
             if dividend_treatment == "income":
                 month_taxable_ordinary_income += dividend
+                month_investment_income += dividend
             elif dividend_treatment == "capital_gains":
                 month_qualified_dividends += dividend
             if account.reinvest_dividends:
@@ -1064,6 +1075,7 @@ def run_deterministic(
         ytd_taxable_ordinary = annual.taxable_ordinary_income + month_taxable_ordinary_income
         ytd_realized_cg = annual.realized_capital_gains + month_realized_cg
         ytd_qualified_dividends = annual.qualified_dividends + month_qualified_dividends
+        ytd_investment_income = annual.investment_income + month_investment_income
         ytd_withheld = annual.tax_withheld + month_withheld
         annualization = 12.0 / max(1, month)
         projected_itemized = 0.0
@@ -1083,7 +1095,7 @@ def run_deterministic(
                     ordinary_income=ytd_taxable_ordinary * annualization,
                     capital_gains=ytd_realized_cg * annualization,
                     qualified_dividends=ytd_qualified_dividends * annualization,
-                    investment_income=0.0,
+                    investment_income=ytd_investment_income * annualization,
                     itemized_deductions=projected_itemized,
                     withheld_tax=ytd_withheld * annualization,
                     early_withdrawal_penalty=early_withdrawal_penalties[year] * annualization,
@@ -1177,6 +1189,7 @@ def run_deterministic(
         annual.fees += month_fees
         annual.taxable_ordinary_income += month_taxable_ordinary_income
         annual.qualified_dividends += month_qualified_dividends
+        annual.investment_income += month_investment_income
 
         if month == 12:
             annual.tax_refund = 0.0
@@ -1201,7 +1214,7 @@ def run_deterministic(
                         ordinary_income=annual.taxable_ordinary_income,
                         capital_gains=annual.realized_capital_gains,
                         qualified_dividends=annual.qualified_dividends,
-                        investment_income=0.0,
+                        investment_income=annual.investment_income,
                         itemized_deductions=itemized,
                         withheld_tax=annual.tax_withheld,
                         early_withdrawal_penalty=early_withdrawal_penalties[year],
