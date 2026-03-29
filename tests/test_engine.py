@@ -65,6 +65,58 @@ def test_annual_income_is_distributed_monthly(tmp_path, sample_plan_dict):
     assert round(result.annual[0].income, 2) == 120000.00
 
 
+def test_annual_expense_is_distributed_monthly_and_avoids_lump_sum_shortfall(tmp_path, sample_plan_dict):
+    data = clone_plan(sample_plan_dict)
+    data["plan_settings"]["plan_start"] = "2026-01"
+    data["plan_settings"]["plan_end"] = "2026-12"
+    data["income"] = [
+        {
+            "name": "Salary",
+            "owner": "primary",
+            "amount": 120000,
+            "frequency": "annual",
+            "start_date": "start",
+            "end_date": "end",
+            "change_over_time": "fixed",
+            "change_rate": None,
+            "tax_handling": "tax_exempt",
+            "withhold_percent": None,
+        }
+    ]
+    data["expenses"] = [
+        {
+            "name": "Living costs",
+            "owner": "joint",
+            "amount": 120000,
+            "frequency": "annual",
+            "start_date": "start",
+            "end_date": "end",
+            "change_over_time": "fixed",
+            "change_rate": None,
+            "spending_type": "essential",
+        }
+    ]
+    data["social_security"] = []
+    data["contributions"] = []
+    data["transfers"] = []
+    data["transactions"] = []
+    data["real_assets"] = []
+    data["healthcare"]["pre_medicare"] = []
+    data["healthcare"]["post_medicare"] = []
+    data["accounts"] = [a for a in data["accounts"] if a["type"] == "cash"]
+    data["accounts"][0]["balance"] = 0
+
+    path = write_plan(tmp_path, data)
+    plan = load_plan(path)
+    result = run_deterministic(plan)
+
+    assert len(result.monthly) == 12
+    assert all(round(month.other_expenses, 2) == 10000.00 for month in result.monthly)
+    assert all(round(month.withdrawals, 2) == 0.00 for month in result.monthly)
+    assert not any(month.insolvent for month in result.monthly)
+    assert round(result.annual[0].other_expenses, 2) == 120000.00
+
+
 def test_one_time_income_remains_lump_sum(tmp_path, sample_plan_dict):
     data = clone_plan(sample_plan_dict)
     data["plan_settings"]["plan_start"] = "2026-01"

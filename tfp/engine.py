@@ -216,29 +216,42 @@ def _active_income_items(
     return out
 
 
-def _active_expense_items(
-    items: list[Expense],
+def _expense_amount_in_month(
+    expense: Expense,
     *,
     current_year: int,
     current_month: int,
     current_index: int,
     plan_start: str,
     plan_end: str,
-) -> list[Expense]:
-    out: list[Expense] = []
-    for item in items:
-        if _occurs_this_month(
-            frequency=item.frequency,
-            start_date=item.start_date,
-            end_date=item.end_date,
-            current_year=current_year,
-            current_month=current_month,
-            current_index=current_index,
-            plan_start=plan_start,
-            plan_end=plan_end,
-        ):
-            out.append(item)
-    return out
+    inflation_rate: float,
+) -> float:
+    if expense.frequency == "annual":
+        if not is_active(expense.start_date, expense.end_date, current_index, plan_start, plan_end):
+            return 0.0
+    elif not _occurs_this_month(
+        frequency=expense.frequency,
+        start_date=expense.start_date,
+        end_date=expense.end_date,
+        current_year=current_year,
+        current_month=current_month,
+        current_index=current_index,
+        plan_start=plan_start,
+        plan_end=plan_end,
+    ):
+        return 0.0
+
+    amount = _amount_for_month(
+        amount=expense.amount,
+        change_over_time=expense.change_over_time,
+        change_rate=expense.change_rate,
+        inflation_rate=inflation_rate,
+        current_year=current_year,
+        plan_start=plan_start,
+    )
+    if expense.frequency == "annual":
+        amount /= 12.0
+    return amount
 
 
 def _income_amount_in_month(
@@ -1049,22 +1062,18 @@ def run_deterministic(
                 _add_calculation_reason("healthcare_expenses", "IRMAA surcharge component", month_irmaa)
 
         # Step 17: Non-healthcare expenses.
-        for expense in _active_expense_items(
-            plan.expenses,
-            current_year=year,
-            current_month=month,
-            current_index=current_index,
-            plan_start=plan_start,
-            plan_end=plan_end,
-        ):
-            amount = _amount_for_month(
-                amount=expense.amount,
-                change_over_time=expense.change_over_time,
-                change_rate=expense.change_rate,
-                inflation_rate=inflation_rate,
+        for expense in plan.expenses:
+            amount = _expense_amount_in_month(
+                expense,
                 current_year=year,
+                current_month=month,
+                current_index=current_index,
                 plan_start=plan_start,
+                plan_end=plan_end,
+                inflation_rate=inflation_rate,
             )
+            if amount <= 0:
+                continue
             month_other_expenses += amount
             _add_calculation_reason("other_expenses", f"Expense: {expense.name}", amount)
             _add_expense_breakdown_entry(month_other_expense_breakdown, expense.name, amount)
