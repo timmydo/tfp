@@ -4,11 +4,7 @@ from __future__ import annotations
 
 from .schema import RothConversion
 from .tax_data import BASE_TAX_YEAR, FEDERAL_BRACKETS
-
-
-def _year_factor(year: int, inflation_rate: float) -> float:
-    delta = max(0, year - BASE_TAX_YEAR)
-    return (1.0 + inflation_rate) ** delta
+from .utils import date_index, year_factor
 
 
 def _parse_bracket_rate(fill_to_bracket: str | None) -> float | None:
@@ -25,25 +21,16 @@ def _parse_bracket_rate(fill_to_bracket: str | None) -> float | None:
 
 def _bracket_upper_bound(filing_status: str, year: int, inflation_rate: float, marginal_rate: float) -> float | None:
     status = filing_status if filing_status in FEDERAL_BRACKETS[BASE_TAX_YEAR] else "single"
-    factor = _year_factor(year, inflation_rate)
+    factor = year_factor(year, inflation_rate, clamp_at_base_year=True)
     for upper, rate in FEDERAL_BRACKETS[BASE_TAX_YEAR][status]:
         if abs(rate - marginal_rate) < 1e-9:
             return None if upper is None else upper * factor
     return None
 
 
-def _date_index(value: str, plan_start: str, plan_end: str) -> int:
-    if value == "start":
-        value = plan_start
-    elif value == "end":
-        value = plan_end
-    year, month = value.split("-")
-    return int(year) * 12 + int(month)
-
-
 def _active(conversion: RothConversion, current_index: int, plan_start: str, plan_end: str) -> bool:
-    start = _date_index(conversion.start_date, plan_start, plan_end)
-    end = _date_index(conversion.end_date, plan_start, plan_end)
+    start = date_index(conversion.start_date, plan_start, plan_end)
+    end = date_index(conversion.end_date, plan_start, plan_end)
     return start <= current_index <= end
 
 

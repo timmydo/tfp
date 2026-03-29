@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from datetime import datetime
 
 from .cost_basis import CostBasisTracker
 from .healthcare import compute_monthly_healthcare_cost
@@ -20,6 +19,7 @@ from .roth import execute_roth_conversions
 from .schema import Account, Expense, Income, Plan
 from .social_security import monthly_social_security_income
 from .tax import YearIncomeSummary, compute_fica, compute_total_tax
+from .utils import change_multiplier, date_index, is_active, parse_ym
 from .withdrawals import cover_shortfall
 
 
@@ -108,23 +108,9 @@ class EngineResult:
     account_withdrawal_reasons_by_year: dict[str, dict[int, dict[str, float]]]
 
 
-def _parse_ym(value: str) -> tuple[int, int]:
-    dt = datetime.strptime(value, "%Y-%m")
-    return dt.year, dt.month
-
-
-def _date_index(value: str, plan_start: str, plan_end: str) -> int:
-    if value == "start":
-        value = plan_start
-    elif value == "end":
-        value = plan_end
-    year, month = _parse_ym(value)
-    return year * 12 + month
-
-
 def _iter_months(start: str, end: str) -> list[tuple[int, int, int]]:
-    sy, sm = _parse_ym(start)
-    ey, em = _parse_ym(end)
+    sy, sm = parse_ym(start)
+    ey, em = parse_ym(end)
     current_y, current_m = sy, sm
     out: list[tuple[int, int, int]] = []
     while (current_y < ey) or (current_y == ey and current_m <= em):
@@ -135,12 +121,6 @@ def _iter_months(start: str, end: str) -> list[tuple[int, int, int]]:
             current_m = 1
             current_y += 1
     return out
-
-
-def _is_active(start_date: str, end_date: str, current_index: int, plan_start: str, plan_end: str) -> bool:
-    start_idx = _date_index(start_date, plan_start, plan_end)
-    end_idx = _date_index(end_date, plan_start, plan_end)
-    return start_idx <= current_index <= end_idx
 
 
 def _occurs_this_month(
@@ -154,10 +134,10 @@ def _occurs_this_month(
     plan_start: str,
     plan_end: str,
 ) -> bool:
-    if not _is_active(start_date, end_date, current_index, plan_start, plan_end):
+    if not is_active(start_date, end_date, current_index, plan_start, plan_end):
         return False
 
-    start_year, start_month = _parse_ym(plan_start if start_date == "start" else start_date)
+    start_year, start_month = parse_ym(plan_start if start_date == "start" else start_date)
     start_index = start_year * 12 + start_month
 
     if frequency == "monthly":
@@ -169,32 +149,6 @@ def _occurs_this_month(
     return False
 
 
-def _change_multiplier(
-    *,
-    change_over_time: str,
-    change_rate: float | None,
-    inflation_rate: float,
-    years_elapsed: int,
-) -> float:
-    if years_elapsed <= 0:
-        return 1.0
-    if change_over_time == "fixed":
-        annual_rate = 0.0
-    elif change_over_time == "increase":
-        annual_rate = change_rate or 0.0
-    elif change_over_time == "decrease":
-        annual_rate = -(change_rate or 0.0)
-    elif change_over_time == "match_inflation":
-        annual_rate = inflation_rate
-    elif change_over_time == "inflation_plus":
-        annual_rate = inflation_rate + (change_rate or 0.0)
-    elif change_over_time == "inflation_minus":
-        annual_rate = inflation_rate - (change_rate or 0.0)
-    else:
-        annual_rate = 0.0
-    return (1.0 + annual_rate) ** years_elapsed
-
-
 def _amount_for_month(
     *,
     amount: float,
@@ -204,9 +158,9 @@ def _amount_for_month(
     current_year: int,
     plan_start: str,
 ) -> float:
-    start_year, _ = _parse_ym(plan_start)
+    start_year, _ = parse_ym(plan_start)
     years_elapsed = max(0, current_year - start_year)
-    return amount * _change_multiplier(
+    return amount * change_multiplier(
         change_over_time=change_over_time,
         change_rate=change_rate,
         inflation_rate=inflation_rate,
@@ -215,7 +169,7 @@ def _amount_for_month(
 
 
 def _age_years_at_month(birthday_ym: str, year: int, month: int) -> float:
-    by, bm = _parse_ym(birthday_ym)
+    by, bm = parse_ym(birthday_ym)
     months = (year - by) * 12 + (month - bm)
     return max(0.0, months / 12.0)
 
@@ -245,7 +199,7 @@ def _active_income_items(
     out: list[Income] = []
     for item in items:
         if item.frequency == "annual":
-            if _is_active(item.start_date, item.end_date, current_index, plan_start, plan_end):
+            if is_active(item.start_date, item.end_date, current_index, plan_start, plan_end):
                 out.append(item)
             continue
         if _occurs_this_month(
@@ -298,7 +252,7 @@ def _income_amount_in_month(
     inflation_rate: float,
 ) -> float:
     if income.frequency == "annual":
-        if not _is_active(income.start_date, income.end_date, current_index, plan_start, plan_end):
+        if not is_active(income.start_date, income.end_date, current_index, plan_start, plan_end):
             return 0.0
     elif not _occurs_this_month(
         frequency=income.frequency,
@@ -456,7 +410,7 @@ def run_deterministic(
         totals: dict[str, float] = {}
         for target_month in range(1, 13):
             target_index = target_year * 12 + target_month
-            if not _is_active(plan_start, plan_end, target_index, plan_start, plan_end):
+            if not is_active(plan_start, plan_end, target_index, plan_start, plan_end):
                 continue
             for income in plan.income:
                 amount = _income_amount_in_month(
@@ -973,7 +927,7 @@ def run_deterministic(
             payment = 0.0
             interest = 0.0
             if state.asset.mortgage is not None:
-                mortgage_end_idx = _date_index(state.asset.mortgage.end_date, plan_start, plan_end)
+                mortgage_end_idx = date_index(state.asset.mortgage.end_date, plan_start, plan_end)
                 if current_index <= mortgage_end_idx:
                     payment, _, interest = mortgage_payment(state)
             month_real_asset_expenses += payment
@@ -1015,7 +969,7 @@ def run_deterministic(
 
         # Step 15: One-time transactions.
         for txn in plan.transactions:
-            txn_idx = _date_index(txn.date, plan_start, plan_end)
+            txn_idx = date_index(txn.date, plan_start, plan_end)
             if txn_idx != current_index:
                 continue
 

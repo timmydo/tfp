@@ -17,6 +17,7 @@ from .tax_data import (
     STANDARD_DEDUCTIONS,
     STATE_TAX_BRACKETS,
 )
+from .utils import year_factor
 
 
 @dataclass(slots=True)
@@ -46,11 +47,6 @@ class TaxResult:
     taxable_ordinary_income: float
 
 
-def _year_factor(year: int, inflation_rate: float) -> float:
-    delta = year - BASE_TAX_YEAR
-    return (1.0 + inflation_rate) ** delta
-
-
 def _normalize_filing_status(filing_status: str) -> str:
     if filing_status in FEDERAL_BRACKETS[BASE_TAX_YEAR]:
         return filing_status
@@ -60,7 +56,7 @@ def _normalize_filing_status(filing_status: str) -> str:
 def _adjusted_standard_deduction(filing_status: str, year: int, inflation_rate: float, base_year: int = BASE_TAX_YEAR) -> float:
     fs = _normalize_filing_status(filing_status)
     base = STANDARD_DEDUCTIONS[BASE_TAX_YEAR][fs]
-    return base * _year_factor(year - base_year + BASE_TAX_YEAR, inflation_rate)
+    return base * year_factor(year, inflation_rate, base_year=base_year)
 
 
 def _adjusted_brackets(
@@ -72,7 +68,7 @@ def _adjusted_brackets(
 ) -> list[tuple[float | None, float]]:
     fs = _normalize_filing_status(filing_status)
     base = brackets_by_year[BASE_TAX_YEAR][fs]
-    factor = _year_factor(year - base_year + BASE_TAX_YEAR, inflation_rate)
+    factor = year_factor(year, inflation_rate, base_year=base_year)
     return [(None if upper is None else upper * factor, rate) for upper, rate in base]
 
 
@@ -181,7 +177,7 @@ def compute_niit(
         return 0.0
 
     fs = _normalize_filing_status(filing_status)
-    threshold = NIIT_THRESHOLDS[fs] * _year_factor(year - base_year + BASE_TAX_YEAR, inflation_rate)
+    threshold = NIIT_THRESHOLDS[fs] * year_factor(year, inflation_rate, base_year=base_year)
     excess_agi = max(0.0, agi - threshold)
     taxable_base = min(max(0.0, investment_income), excess_agi)
     return taxable_base * 0.038
@@ -197,7 +193,7 @@ def compute_amt(
 ) -> float:
     fs = _normalize_filing_status(filing_status)
     exemption, phaseout_start = AMT_EXEMPTIONS[fs]
-    factor = _year_factor(year - base_year + BASE_TAX_YEAR, inflation_rate)
+    factor = year_factor(year, inflation_rate, base_year=base_year)
     exemption *= factor
     phaseout_start *= factor
 
@@ -227,7 +223,7 @@ def compute_state_tax(
     if state_brackets is None:
         return 0.0
     brackets = state_brackets.get(status) or state_brackets.get("single") or [(None, 0.0)]
-    factor = _year_factor(year - base_year + BASE_TAX_YEAR, inflation_rate)
+    factor = year_factor(year, inflation_rate, base_year=base_year)
     adjusted = [(None if upper is None else upper * factor, rate) for upper, rate in brackets]
     return _progressive_tax(amount, adjusted)
 
@@ -243,7 +239,7 @@ def compute_fica(
         return 0.0
 
     base = FICA_RATES[BASE_TAX_YEAR]
-    factor = _year_factor(year, inflation_rate)
+    factor = year_factor(year, inflation_rate)
     ss_rate = base["social_security_rate"]
     ss_wage_base = base["social_security_wage_base"] * factor
     medicare_rate = base["medicare_rate"]
@@ -271,7 +267,7 @@ def compute_self_employment_tax(se_income: float, year: int, inflation_rate: flo
         return 0.0
 
     base = FICA_RATES[BASE_TAX_YEAR]
-    factor = _year_factor(year, inflation_rate)
+    factor = year_factor(year, inflation_rate)
     ss_wage_base = base["social_security_wage_base"] * factor
 
     taxable = se_income * 0.9235

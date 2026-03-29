@@ -60,14 +60,12 @@ Remaining work
     transaction fees, transfer amounts, Roth conversion annual_amount,
     and related override/amount settings with JSON-path-specific errors.
 
-5. Code duplication (cleanup, not blocking)
+5. Code duplication (cleanup, not blocking) — DONE
 
-These helpers are duplicated with identical logic across modules:
-  - _change_multiplier: engine.py, healthcare.py
-  - _date_index: engine.py, healthcare.py, roth.py
-  - _year_factor: tax.py, healthcare.py, roth.py
-  - _is_active: engine.py, healthcare.py
-Consider extracting to a shared utils.py.
+5a. FIXED: Extracted shared date/rate helpers into tfp/utils.py.
+    engine.py, healthcare.py, roth.py, and tax.py now share
+    date_index/is_active/change_multiplier/year_factor logic while
+    preserving the tax module's pre-base-year inflation behavior.
 
 6. Frequency semantics and robustness
 

@@ -4,44 +4,7 @@ from __future__ import annotations
 
 from .schema import Healthcare, HealthcarePostMedicare
 from .tax_data import BASE_TAX_YEAR, IRMAA_BRACKETS
-
-
-def _year_factor(year: int, inflation_rate: float) -> float:
-    delta = max(0, year - BASE_TAX_YEAR)
-    return (1.0 + inflation_rate) ** delta
-
-
-def _date_index(value: str, plan_start: str, plan_end: str) -> int:
-    if value == "start":
-        value = plan_start
-    elif value == "end":
-        value = plan_end
-    year, month = value.split("-")
-    return int(year) * 12 + int(month)
-
-
-def _is_active(start_date: str, end_date: str, current_index: int, plan_start: str, plan_end: str) -> bool:
-    return _date_index(start_date, plan_start, plan_end) <= current_index <= _date_index(end_date, plan_start, plan_end)
-
-
-def _change_multiplier(change_over_time: str, change_rate: float | None, inflation_rate: float, years_elapsed: int) -> float:
-    if years_elapsed <= 0:
-        return 1.0
-    if change_over_time == "fixed":
-        annual_rate = 0.0
-    elif change_over_time == "increase":
-        annual_rate = change_rate or 0.0
-    elif change_over_time == "decrease":
-        annual_rate = -(change_rate or 0.0)
-    elif change_over_time == "match_inflation":
-        annual_rate = inflation_rate
-    elif change_over_time == "inflation_plus":
-        annual_rate = inflation_rate + (change_rate or 0.0)
-    elif change_over_time == "inflation_minus":
-        annual_rate = inflation_rate - (change_rate or 0.0)
-    else:
-        annual_rate = 0.0
-    return (1.0 + annual_rate) ** years_elapsed
+from .utils import change_multiplier, is_active, year_factor
 
 
 def _irmaa_surcharge_monthly(
@@ -52,7 +15,7 @@ def _irmaa_surcharge_monthly(
     lookback_magi: float,
 ) -> tuple[float, float]:
     status = filing_status if filing_status in IRMAA_BRACKETS[BASE_TAX_YEAR] else "single"
-    factor = _year_factor(year, inflation_rate)
+    factor = year_factor(year, inflation_rate, clamp_at_base_year=True)
 
     for upper, (part_b, part_d) in IRMAA_BRACKETS[BASE_TAX_YEAR][status]:
         upper_adj = None if upper is None else upper * factor
@@ -66,7 +29,7 @@ def _post_medicare_active(item: HealthcarePostMedicare, owner_age: float, curren
     if owner_age < 65.0:
         return False
     start = item.medicare_start_date or "start"
-    return _is_active(start, "end", current_index, plan_start, plan_end)
+    return is_active(start, "end", current_index, plan_start, plan_end)
 
 
 def compute_monthly_healthcare_cost(
@@ -91,11 +54,16 @@ def compute_monthly_healthcare_cost(
     for item in healthcare.pre_medicare:
         start = item.start_date or "start"
         end = item.end_date or "end"
-        if not _is_active(start, end, current_index, plan_start, plan_end):
+        if not is_active(start, end, current_index, plan_start, plan_end):
             continue
         if owner_ages.get(item.owner, 0.0) >= 65.0:
             continue
-        factor = _change_multiplier(item.change_over_time, item.change_rate, inflation_rate, years_elapsed)
+        factor = change_multiplier(
+            change_over_time=item.change_over_time,
+            change_rate=item.change_rate,
+            inflation_rate=inflation_rate,
+            years_elapsed=years_elapsed,
+        )
         total += (item.monthly_premium + item.annual_out_of_pocket / 12.0) * factor
 
     for item in healthcare.post_medicare:
@@ -103,7 +71,12 @@ def compute_monthly_healthcare_cost(
         if not _post_medicare_active(item, owner_age, current_index, plan_start, plan_end):
             continue
 
-        factor = _change_multiplier(item.change_over_time, item.change_rate, inflation_rate, years_elapsed)
+        factor = change_multiplier(
+            change_over_time=item.change_over_time,
+            change_rate=item.change_rate,
+            inflation_rate=inflation_rate,
+            years_elapsed=years_elapsed,
+        )
         monthly = (
             item.part_b_monthly_premium
             + item.supplement_monthly_premium
