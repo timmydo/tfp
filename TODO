@@ -43,6 +43,13 @@ Remaining work
     ages below 73 silently produce 0 RMD.
     Fix: add _check_range for rmd_start_age (min=59, max=120 or similar).
 
+3d. Employer match logic uses the current month's salary only.
+    engine.py computes the match cap from the salary paid in the current month,
+    which is fine for steady monthly payroll but does not enforce a true annual
+    cap when contribution timing is uneven.
+    Fix: either track employer-match YTD against annual salary reference, or
+    explicitly document that employer match is approximated month-by-month.
+
 4. Validation hardening (from original TODO)
 
 Extend numeric range validation to all remaining percent/rate fields:
@@ -65,6 +72,31 @@ These helpers are duplicated with identical logic across modules:
   - _year_factor: tax.py, healthcare.py, roth.py
   - _is_active: engine.py, healthcare.py
 Consider extracting to a shared utils.py.
+
+6. Frequency semantics and robustness
+
+6a. Annual expenses are lump-sum while annual income is spread monthly.
+    This can create avoidable shortfall withdrawals when a large annual expense
+    lands in a single month but annual income has already been smoothed.
+    Decide whether annual frequency should mean "once per year in start month"
+    or "spread evenly across active months", then align code and docs.
+
+6b. Annual contributions are also lump-sum in the matching month.
+    This creates the same spike behavior for contributions and can distort
+    apparent cash-flow timing versus the rest of the model.
+    Decide whether to preserve this as an explicit simplification or amortize
+    annual contributions across the year.
+
+6c. If lump-sum annual behavior is intentional, document it in AGENTS.md.
+    The current spec defines allowed frequencies but does not say whether
+    annual amounts are spread or applied as a single-month event.
+
+7. Reviewed, not currently TODO
+
+7a. simulation.py:_clamp_annual_return at -95%.
+    This is an extreme assumption guard, but the review correctly notes the
+    resulting monthly rate is still mathematically valid. Leave as-is unless
+    product requirements call for a different floor.
 
 Notes:
 - Keep JSON-path-specific validation error quality.
