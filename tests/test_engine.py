@@ -309,6 +309,88 @@ def test_primary_residence_sale_applies_gain_exclusion(tmp_path, sample_plan_dic
     assert round(month.realized_capital_gains, 2) == 300000.00
 
 
+def test_buy_asset_creates_real_asset_state_when_transaction_executes(tmp_path, sample_plan_dict):
+    data = clone_plan(sample_plan_dict)
+    data["plan_settings"]["plan_start"] = "2026-01"
+    data["plan_settings"]["plan_end"] = "2026-03"
+    data["income"] = []
+    data["expenses"] = []
+    data["contributions"] = []
+    data["transfers"] = []
+    data["social_security"] = []
+    data["healthcare"]["pre_medicare"] = []
+    data["healthcare"]["post_medicare"] = []
+    data["roth_conversions"] = []
+    data["rmds"] = {
+        "enabled": False,
+        "rmd_start_age": 73,
+        "accounts": [],
+        "destination_account": "Cash",
+    }
+    data["accounts"] = [
+        {
+            "name": "Cash",
+            "type": "cash",
+            "owner": "primary",
+            "balance": 300000,
+            "cost_basis": None,
+            "growth_rate": 0.0,
+            "dividend_yield": 0.0,
+            "dividend_tax_treatment": "tax_free",
+            "reinvest_dividends": False,
+            "bond_allocation_percent": 100,
+            "yearly_fees": 0.0,
+            "allow_withdrawals": True,
+        }
+    ]
+    data["real_assets"] = [
+        {
+            "name": "Future Home",
+            "current_value": 999999,
+            "purchase_price": None,
+            "primary_residence": True,
+            "change_over_time": "fixed",
+            "change_rate": None,
+            "property_tax_rate": 0.012,
+            "mortgage": None,
+            "maintenance_expenses": [
+                {
+                    "name": "Upkeep",
+                    "amount": 100,
+                    "frequency": "monthly",
+                }
+            ],
+        }
+    ]
+    data["transactions"] = [
+        {
+            "name": "Buy future home",
+            "date": "2026-02",
+            "type": "buy_asset",
+            "amount": 250000,
+            "fees": 10000,
+            "tax_treatment": "tax_free",
+            "linked_asset": "Future Home",
+            "deposit_to_account": None,
+        }
+    ]
+
+    path = write_plan(tmp_path, data)
+    plan = load_plan(path)
+    result = run_deterministic(plan)
+
+    january, february, march = result.monthly
+
+    assert round(january.net_worth_end, 2) == 300000.00
+    assert round(january.real_asset_expenses, 2) == 0.00
+
+    assert round(february.net_worth_end, 2) == 290000.00
+    assert round(february.real_asset_expenses, 2) == 0.00
+
+    assert round(march.real_asset_expenses, 2) == 350.00
+    assert round(march.net_worth_end, 2) == 289650.00
+
+
 def test_transfer_with_insufficient_source_balance_does_not_record_impossible_withdrawal(tmp_path, sample_plan_dict):
     data = clone_plan(sample_plan_dict)
     data["plan_settings"]["plan_start"] = "2026-01"

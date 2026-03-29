@@ -31,11 +31,10 @@ Remaining work
     engine.py now stops mortgage payments after the configured end month.
     Regression coverage added for balances that would otherwise outlive end_date.
 
-3b. buy_asset transactions don't create RealAssetState.
-    engine.py:940-947 debits cash but the purchased asset gets no appreciation,
-    property tax, or maintenance tracking for the remainder of the plan.
-    Fix: create a RealAssetState entry from the transaction's linked_asset or
-    accept that buy_asset is cash-outflow-only (and document that).
+3b. FIXED: buy_asset transactions now instantiate linked real assets when purchased.
+    Assets referenced by buy_asset transactions stay out of the active
+    real_asset state until the purchase month, then start accruing
+    appreciation/property-tax/maintenance from subsequent months.
 
 3c. rmd_start_age not validated. validate.py never checks its range.
     Users can set it to 50 or 200 without error. Divisor table covers 73-120;

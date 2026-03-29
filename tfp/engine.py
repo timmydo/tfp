@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 
 from .cost_basis import CostBasisTracker
@@ -305,6 +305,18 @@ def run_deterministic(
         if account.type == "taxable_brokerage"
     }
 
+    real_assets_by_name = {asset.name: asset for asset in plan.real_assets}
+    buy_asset_templates = {
+        txn.linked_asset: real_assets_by_name.get(txn.linked_asset)
+        for txn in plan.transactions
+        if txn.type == "buy_asset" and txn.linked_asset
+    }
+    pending_real_assets = {
+        name: asset
+        for name, asset in buy_asset_templates.items()
+        if asset is not None
+    }
+
     real_asset_state = {
         asset.name: RealAssetState(
             asset=asset,
@@ -312,6 +324,7 @@ def run_deterministic(
             mortgage_balance=float(asset.mortgage.remaining_balance) if asset.mortgage else 0.0,
         )
         for asset in plan.real_assets
+        if asset.name not in pending_real_assets
     }
 
     monthly_results: list[MonthResult] = []
@@ -955,12 +968,27 @@ def run_deterministic(
                 _add_account_flow_reason(deposit, f"Transaction deposit: {txn.name}", proceeds)
             elif txn.type == "buy_asset":
                 purchase_total = txn.amount + txn.fees
-                _debit_account_up_to(
+                _, remaining_purchase = _debit_account_up_to(
                     cash_account,
                     purchase_total,
                     withdrawal_reason=f"Transaction purchase: {txn.name}",
                     flow_reason_label=f"Transaction purchase: {txn.name}",
                 )
+                template = pending_real_assets.get(txn.linked_asset or "")
+                if template is not None and remaining_purchase <= 0.01:
+                    purchased_asset = replace(
+                        template,
+                        current_value=txn.amount,
+                        purchase_price=purchase_total,
+                    )
+                    real_asset_state[purchased_asset.name] = RealAssetState(
+                        asset=purchased_asset,
+                        current_value=float(purchased_asset.current_value),
+                        mortgage_balance=float(purchased_asset.mortgage.remaining_balance)
+                        if purchased_asset.mortgage
+                        else 0.0,
+                    )
+                    pending_real_assets.pop(purchased_asset.name, None)
             elif txn.type in {"transfer", "other"}:
                 net = txn.amount - txn.fees
                 if txn.deposit_to_account:
