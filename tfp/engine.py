@@ -287,6 +287,44 @@ def _active_expense_items(
     return out
 
 
+def _income_amount_in_month(
+    income: Income,
+    *,
+    current_year: int,
+    current_month: int,
+    current_index: int,
+    plan_start: str,
+    plan_end: str,
+    inflation_rate: float,
+) -> float:
+    if income.frequency == "annual":
+        if not _is_active(income.start_date, income.end_date, current_index, plan_start, plan_end):
+            return 0.0
+    elif not _occurs_this_month(
+        frequency=income.frequency,
+        start_date=income.start_date,
+        end_date=income.end_date,
+        current_year=current_year,
+        current_month=current_month,
+        current_index=current_index,
+        plan_start=plan_start,
+        plan_end=plan_end,
+    ):
+        return 0.0
+
+    amount = _amount_for_month(
+        amount=income.amount,
+        change_over_time=income.change_over_time,
+        change_rate=income.change_rate,
+        inflation_rate=inflation_rate,
+        current_year=current_year,
+        plan_start=plan_start,
+    )
+    if income.frequency == "annual":
+        amount /= 12.0
+    return amount
+
+
 def run_deterministic(
     plan: Plan,
     annual_return_overrides: dict[int, tuple[float, float]] | None = None,
@@ -409,13 +447,47 @@ def run_deterministic(
                 return 0.0, earnings_withdrawn * 0.10
         return 0.0, 0.0
 
+    annual_income_totals_by_year: dict[int, dict[str, float]] = {}
+
+    def _income_totals_for_year(target_year: int) -> dict[str, float]:
+        cached = annual_income_totals_by_year.get(target_year)
+        if cached is not None:
+            return cached
+        totals: dict[str, float] = {}
+        for target_month in range(1, 13):
+            target_index = target_year * 12 + target_month
+            if not _is_active(plan_start, plan_end, target_index, plan_start, plan_end):
+                continue
+            for income in plan.income:
+                amount = _income_amount_in_month(
+                    income,
+                    current_year=target_year,
+                    current_month=target_month,
+                    current_index=target_index,
+                    plan_start=plan_start,
+                    plan_end=plan_end,
+                    inflation_rate=inflation_rate,
+                )
+                if amount <= 0:
+                    continue
+                totals[income.name] = totals.get(income.name, 0.0) + amount
+        annual_income_totals_by_year[target_year] = totals
+        return totals
+
     ytd_wages_by_owner = {"primary": 0.0, "spouse": 0.0}
+    current_match_year: int | None = None
+    annual_income_totals_for_year: dict[str, float] = {}
+    ytd_matched_contributions: dict[int, float] = {}
 
     for year, month, current_index in months:
         # Step 1: Age calculation.
         annual = annual_by_year.setdefault(year, AnnualResult(year=year))
         annual_fica_withheld.setdefault(year, 0.0)
         annual_estimated_tax_paid.setdefault(year, 0.0)
+        if year != current_match_year:
+            current_match_year = year
+            annual_income_totals_for_year = _income_totals_for_year(year)
+            ytd_matched_contributions = {}
         if month == 1:
             ytd_wages_by_owner = {"primary": 0.0, "spouse": 0.0}
         for account in plan.accounts:
@@ -496,7 +568,6 @@ def run_deterministic(
             return actual, requested_amount - actual
 
         # Step 2: Income collection.
-        income_by_name: dict[str, float] = {}
         for income in _active_income_items(
             plan.income,
             current_year=year,
@@ -505,20 +576,18 @@ def run_deterministic(
             plan_start=plan_start,
             plan_end=plan_end,
         ):
-            amount = _amount_for_month(
-                amount=income.amount,
-                change_over_time=income.change_over_time,
-                change_rate=income.change_rate,
-                inflation_rate=inflation_rate,
+            amount = _income_amount_in_month(
+                income,
                 current_year=year,
+                current_month=month,
+                current_index=current_index,
                 plan_start=plan_start,
+                plan_end=plan_end,
+                inflation_rate=inflation_rate,
             )
-            if income.frequency == "annual":
-                amount /= 12.0
             balances[cash_account] += amount
             _add_contribution(year, cash_account, amount, reason=f"Income: {income.name}")
             month_income += amount
-            income_by_name[income.name] = income_by_name.get(income.name, 0.0) + amount
             _add_calculation_reason("income", f"Income: {income.name}", amount)
             _add_account_flow_reason(cash_account, f"Income: {income.name}", amount)
 
@@ -583,7 +652,7 @@ def run_deterministic(
             _add_account_flow_reason(cash_account, "Social Security income", ss_income)
 
         # Steps 5-7: Payroll deductions, employer match deposits, other contributions.
-        for contribution in plan.contributions:
+        for contribution_idx, contribution in enumerate(plan.contributions):
             if not _occurs_this_month(
                 frequency=contribution.frequency,
                 start_date=contribution.start_date,
@@ -643,9 +712,16 @@ def run_deterministic(
             month_contributions += amount
 
             if contribution.employer_match:
-                salary_paid = income_by_name.get(contribution.employer_match.salary_reference, 0.0)
-                match_cap = salary_paid * contribution.employer_match.up_to_percent_of_salary
-                match_amount = min(amount, match_cap) * contribution.employer_match.match_percent
+                annual_salary_amount = annual_income_totals_for_year.get(
+                    contribution.employer_match.salary_reference,
+                    0.0,
+                )
+                annual_match_cap = annual_salary_amount * contribution.employer_match.up_to_percent_of_salary
+                matched_so_far = ytd_matched_contributions.get(contribution_idx, 0.0)
+                remaining_matchable = max(0.0, annual_match_cap - matched_so_far)
+                eligible_amount = min(amount, remaining_matchable)
+                ytd_matched_contributions[contribution_idx] = matched_so_far + eligible_amount
+                match_amount = eligible_amount * contribution.employer_match.match_percent
                 if match_amount > 0:
                     balances[dest] += match_amount
                     _add_contribution(year, dest, match_amount, reason=f"Employer match: {contribution.name}")

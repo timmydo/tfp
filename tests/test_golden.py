@@ -88,16 +88,16 @@ def test_sample_plan_deterministic_golden_metrics():
 
     assert round(first.income) == 300000
     assert round(first.expenses) == 212169
-    assert round(first.net_worth_end) == 2497210
+    assert round(first.net_worth_end) == 2502439
 
     assert tenth.year == 2035
-    assert round(tenth.net_worth_end) == 4127257
+    assert round(tenth.net_worth_end) == 4218532
 
     assert round(last.income) == 118257
     assert round(last.expenses) == 531417
     assert round(last.net_worth_end) == 2935834
 
-    assert result.insolvency_years == [2062, 2063, 2064, 2065]
+    assert result.insolvency_years == [2063, 2064, 2065]
 
 
 def test_social_security_starts_in_claiming_month(tmp_path, sample_plan_dict):

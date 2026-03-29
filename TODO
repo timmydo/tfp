@@ -40,12 +40,11 @@ Remaining work
     Validation rejects ages below 59 and above 120 with JSON-path-specific
     errors at rmds.rmd_start_age.
 
-3d. Employer match logic uses the current month's salary only.
-    engine.py computes the match cap from the salary paid in the current month,
-    which is fine for steady monthly payroll but does not enforce a true annual
-    cap when contribution timing is uneven.
-    Fix: either track employer-match YTD against annual salary reference, or
-    explicitly document that employer match is approximated month-by-month.
+3d. FIXED: Employer match now uses an annual salary cap with YTD consumption.
+    engine.py derives the referenced salary's total compensation for the current
+    year using the engine's existing income timing rules, then applies employer
+    match against the remaining annual eligible contribution amount. This avoids
+    under-matching front-loaded or otherwise uneven contribution timing.
 
 4. Validation hardening (from original TODO)
 

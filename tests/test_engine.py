@@ -103,6 +103,105 @@ def test_one_time_income_remains_lump_sum(tmp_path, sample_plan_dict):
     assert sum(amount for month, amount in income_by_month.items() if month != 3) == 0.00
 
 
+def test_employer_match_uses_annual_salary_cap_for_lump_sum_contribution(tmp_path, sample_plan_dict):
+    data = clone_plan(sample_plan_dict)
+    data["plan_settings"]["plan_start"] = "2026-01"
+    data["plan_settings"]["plan_end"] = "2026-12"
+    data["income"] = [
+        {
+            "name": "Salary",
+            "owner": "primary",
+            "amount": 120000,
+            "frequency": "annual",
+            "start_date": "start",
+            "end_date": "end",
+            "change_over_time": "fixed",
+            "change_rate": None,
+            "tax_handling": "tax_exempt",
+            "withhold_percent": None,
+        }
+    ]
+    data["contributions"] = [
+        {
+            "name": "Frontloaded 401k",
+            "source_account": "income",
+            "destination_account": "401k",
+            "amount": 7200,
+            "frequency": "annual",
+            "start_date": "start",
+            "end_date": "end",
+            "change_over_time": "fixed",
+            "change_rate": None,
+            "employer_match": {
+                "match_percent": 0.5,
+                "up_to_percent_of_salary": 0.06,
+                "salary_reference": "Salary",
+            },
+        }
+    ]
+    data["expenses"] = []
+    data["transfers"] = []
+    data["transactions"] = []
+    data["real_assets"] = []
+    data["healthcare"]["pre_medicare"] = []
+    data["healthcare"]["post_medicare"] = []
+    data["social_security"] = []
+    data["accounts"] = [
+        {
+            "name": "Cash",
+            "type": "cash",
+            "owner": "primary",
+            "balance": 0,
+            "cost_basis": None,
+            "growth_rate": 0.0,
+            "dividend_yield": 0.0,
+            "dividend_tax_treatment": "tax_free",
+            "reinvest_dividends": False,
+            "bond_allocation_percent": 100,
+            "yearly_fees": 0.0,
+            "allow_withdrawals": True,
+        },
+        {
+            "name": "401k",
+            "type": "401k",
+            "owner": "primary",
+            "balance": 0,
+            "cost_basis": None,
+            "growth_rate": 0.0,
+            "dividend_yield": 0.0,
+            "dividend_tax_treatment": "tax_free",
+            "reinvest_dividends": True,
+            "bond_allocation_percent": 0,
+            "yearly_fees": 0.0,
+            "allow_withdrawals": True,
+        },
+    ]
+    data["withdrawal_strategy"] = {
+        "order": ["cash", "401k"],
+        "account_specific_order": ["Cash", "401k"],
+        "use_account_specific": True,
+        "rmd_satisfied_first": True,
+    }
+    data["rmds"] = {
+        "enabled": False,
+        "rmd_start_age": 73,
+        "accounts": [],
+        "destination_account": "Cash",
+    }
+    data["roth_conversions"] = []
+
+    path = write_plan(tmp_path, data)
+    plan = load_plan(path)
+    result = run_deterministic(plan)
+
+    january = result.monthly[0]
+    annual_401k = result.account_annual["401k"][0]
+
+    assert january.account_flow_reasons["401k"]["Contribution in: Frontloaded 401k"] == 7200.0
+    assert january.account_flow_reasons["401k"]["Employer match: Frontloaded 401k"] == 3600.0
+    assert annual_401k.contributions == 10800.0
+
+
 def test_shortfall_triggers_withdrawals(tmp_path, sample_plan_dict):
     data = clone_plan(sample_plan_dict)
     data["plan_settings"]["plan_start"] = "2026-01"
