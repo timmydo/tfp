@@ -740,6 +740,10 @@ Validation runs before simulation:
 5. Social Security spousal benefit uses a simplified dual-entitlement approximation.
 6. AMT is modeled as a simplified approximation.
 7. Monte Carlo/historical annual returns are spread uniformly across each month's geometric rate for that year.
+8. Social Security benefits are modeled as 85% taxable when subject to income tax, rather than using the full provisional-income formula.
+9. NIIT thresholds and Additional Medicare Tax thresholds are inflation-indexed in the current implementation, even though the real-law thresholds are fixed nominal dollar amounts.
+10. Plans that end before December do not receive a final year-end tax settlement; withholding in the partial final year is used as a proxy.
+11. Amount inflation is anchored to `plan_settings.plan_start`; dollar amounts are not re-based from each item's own `start_date`.
 
 ---
 

@@ -6,23 +6,23 @@ Remaining work
 1b. FIXED: Tracked investment_income in engine.py for correct NIIT computation.
 1c. FIXED: Added capital_gains branch for non-brokerage transfers in engine.py.
 
-2. Undocumented simplifications (add to AGENTS.md "Stated Simplifications")
+2. Undocumented simplifications — DONE
 
-2a. Social Security benefits are 85% taxable (flat). engine.py:566.
+2a. DOCUMENTED: Social Security benefits are 85% taxable (flat). engine.py:566.
     Real law uses a provisional-income formula that can result in 0%/50%/85% taxable.
     Current approach overtaxes low-income retirees.
 
-2b. NIIT thresholds are inflation-indexed in code (tax.py:184).
+2b. DOCUMENTED: NIIT thresholds are inflation-indexed in code (tax.py:184).
     Real law: $200K/$250K/$125K thresholds are fixed, not indexed.
     Code inflates them, undertaxing high earners in future years.
 
-2c. Additional Medicare tax thresholds are inflation-indexed (tax.py:251-256).
+2c. DOCUMENTED: Additional Medicare tax thresholds are inflation-indexed (tax.py:251-256).
     Same issue as 2b: $200K/$250K/$125K are fixed in real law.
 
-2d. Plans ending mid-year get no year-end tax settlement (engine.py:1181).
+2d. DOCUMENTED: Plans ending mid-year get no year-end tax settlement (engine.py:1181).
     Tax settlement only fires in month==12. Partial years use withholding as proxy.
 
-2e. All dollar amounts are in plan-start-year dollars.
+2e. DOCUMENTED: All dollar amounts are in plan-start-year dollars.
     _amount_for_month inflates from plan_start, not from each item's start_date.
 
 3. Spec gaps
