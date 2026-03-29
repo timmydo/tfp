@@ -76,15 +76,15 @@ Remaining work
     AGENTS.md now documents that partial first/last years are prorated by
     active months.
 
-6b. Annual contributions are also lump-sum in the matching month.
-    This creates the same spike behavior for contributions and can distort
-    apparent cash-flow timing versus the rest of the model.
-    Decide whether to preserve this as an explicit simplification or amortize
-    annual contributions across the year.
+6b. FIXED: Annual contributions are now spread across active months.
+    engine.py now applies annual contributions at one-twelfth of the
+    configured annual amount in each active month, mirroring annual income
+    and expense handling and avoiding artificial shortfall behavior from a
+    single-month contribution spike.
 
-6c. If lump-sum annual behavior is intentional, document it in AGENTS.md.
-    The current spec defines allowed frequencies but does not say whether
-    annual amounts are spread or applied as a single-month event.
+6c. FIXED: AGENTS.md now documents annual contribution timing semantics.
+    Annual contributions are specified as one-twelfth per active month, with
+    partial first/last years prorated by active months.
 
 7. Reviewed, not currently TODO
 

@@ -141,6 +141,8 @@ Ongoing contributions to accounts (e.g., 401k payroll deductions, IRA contributi
 | `change_rate` | number/null | Custom percentage for applicable change types |
 | `employer_match` | object/null | Optional employer match details |
 
+For `contributions`, `frequency: "annual"` means the configured annual amount is applied as one-twelfth in each active month. Partial first/last years are prorated by active months, mirroring annual income handling.
+
 ---
 
 ### `income`

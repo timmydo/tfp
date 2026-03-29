@@ -16,7 +16,7 @@ from .real_assets import (
 )
 from .rmd import execute_rmds
 from .roth import execute_roth_conversions
-from .schema import Account, Expense, Income, Plan
+from .schema import Account, Contribution, Expense, Income, Plan
 from .social_security import monthly_social_security_income
 from .tax import YearIncomeSummary, compute_fica, compute_total_tax
 from .utils import change_multiplier, date_index, is_active, parse_ym
@@ -250,6 +250,44 @@ def _expense_amount_in_month(
         plan_start=plan_start,
     )
     if expense.frequency == "annual":
+        amount /= 12.0
+    return amount
+
+
+def _contribution_amount_in_month(
+    contribution: Contribution,
+    *,
+    current_year: int,
+    current_month: int,
+    current_index: int,
+    plan_start: str,
+    plan_end: str,
+    inflation_rate: float,
+) -> float:
+    if contribution.frequency == "annual":
+        if not is_active(contribution.start_date, contribution.end_date, current_index, plan_start, plan_end):
+            return 0.0
+    elif not _occurs_this_month(
+        frequency=contribution.frequency,
+        start_date=contribution.start_date,
+        end_date=contribution.end_date,
+        current_year=current_year,
+        current_month=current_month,
+        current_index=current_index,
+        plan_start=plan_start,
+        plan_end=plan_end,
+    ):
+        return 0.0
+
+    amount = _amount_for_month(
+        amount=contribution.amount,
+        change_over_time=contribution.change_over_time,
+        change_rate=contribution.change_rate,
+        inflation_rate=inflation_rate,
+        current_year=current_year,
+        plan_start=plan_start,
+    )
+    if contribution.frequency == "annual":
         amount /= 12.0
     return amount
 
@@ -620,26 +658,17 @@ def run_deterministic(
 
         # Steps 5-7: Payroll deductions, employer match deposits, other contributions.
         for contribution_idx, contribution in enumerate(plan.contributions):
-            if not _occurs_this_month(
-                frequency=contribution.frequency,
-                start_date=contribution.start_date,
-                end_date=contribution.end_date,
+            amount = _contribution_amount_in_month(
+                contribution,
                 current_year=year,
                 current_month=month,
                 current_index=current_index,
                 plan_start=plan_start,
                 plan_end=plan_end,
-            ):
-                continue
-
-            amount = _amount_for_month(
-                amount=contribution.amount,
-                change_over_time=contribution.change_over_time,
-                change_rate=contribution.change_rate,
                 inflation_rate=inflation_rate,
-                current_year=year,
-                plan_start=plan_start,
             )
+            if amount <= 0:
+                continue
 
             source = contribution.source_account
             dest = contribution.destination_account
