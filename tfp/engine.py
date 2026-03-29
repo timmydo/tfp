@@ -881,7 +881,12 @@ def run_deterministic(
                     property_tax,
                 )
 
-            payment, _, interest = mortgage_payment(state)
+            payment = 0.0
+            interest = 0.0
+            if state.asset.mortgage is not None:
+                mortgage_end_idx = _date_index(state.asset.mortgage.end_date, plan_start, plan_end)
+                if current_index <= mortgage_end_idx:
+                    payment, _, interest = mortgage_payment(state)
             month_real_asset_expenses += payment
             month_mortgage_interest += interest
             if payment > 0:

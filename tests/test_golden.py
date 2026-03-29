@@ -202,3 +202,32 @@ def test_mortgage_payoff_month_stops_future_payments(tmp_path, sample_plan_dict)
     expenses = [m.real_asset_expenses for m in result.monthly]
 
     assert [round(v, 2) for v in expenses] == [600.0, 400.0, 0.0, 0.0]
+
+
+def test_mortgage_end_date_stops_payments_with_balance_remaining(tmp_path, sample_plan_dict):
+    plan = _minimal_single_person_plan(tmp_path, sample_plan_dict)
+    plan.plan_settings.plan_start = "2026-01"
+    plan.plan_settings.plan_end = "2026-04"
+    plan.real_assets = [
+        RealAsset(
+            name="Test Home",
+            current_value=100000,
+            purchase_price=100000,
+            primary_residence=True,
+            change_over_time="fixed",
+            change_rate=None,
+            property_tax_rate=0.0,
+            mortgage=Mortgage(
+                payment=250,
+                remaining_balance=1000,
+                interest_rate=0.0,
+                end_date="2026-02",
+            ),
+            maintenance_expenses=[],
+        )
+    ]
+
+    result = run_deterministic(plan)
+    expenses = [m.real_asset_expenses for m in result.monthly]
+
+    assert [round(v, 2) for v in expenses] == [250.0, 250.0, 0.0, 0.0]
