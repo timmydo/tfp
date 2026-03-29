@@ -27,10 +27,9 @@ Remaining work
 
 3. Spec gaps
 
-3a. Mortgage end_date is parsed (schema.py:324) but never enforced.
-    real_assets.py:mortgage_payment only stops when balance <= 0.
-    If amortization doesn't reach zero by end_date, payments continue past it.
-    Fix: check current_index against mortgage.end_date in the engine's step 14.
+3a. FIXED: Enforced mortgage end_date in engine step 14.
+    engine.py now stops mortgage payments after the configured end month.
+    Regression coverage added for balances that would otherwise outlive end_date.
 
 3b. buy_asset transactions don't create RealAssetState.
     engine.py:940-947 debits cash but the purchased asset gets no appreciation,
