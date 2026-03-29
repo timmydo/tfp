@@ -396,6 +396,7 @@ def validate_plan(plan: Plan) -> ValidationResult:
         min_value=0,
     )
     _check_range(result, "healthcare.irmaa.lookback_years", plan.healthcare.irmaa.lookback_years, min_value=1)
+    _check_range(result, "rmds.rmd_start_age", plan.rmds.rmd_start_age, min_value=59, max_value=120)
 
     if plan.rmds.enabled:
         for idx, name in enumerate(plan.rmds.accounts):

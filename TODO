@@ -36,10 +36,9 @@ Remaining work
     real_asset state until the purchase month, then start accruing
     appreciation/property-tax/maintenance from subsequent months.
 
-3c. rmd_start_age not validated. validate.py never checks its range.
-    Users can set it to 50 or 200 without error. Divisor table covers 73-120;
-    ages below 73 silently produce 0 RMD.
-    Fix: add _check_range for rmd_start_age (min=59, max=120 or similar).
+3c. FIXED: rmd_start_age range is now validated in validate.py.
+    Validation rejects ages below 59 and above 120 with JSON-path-specific
+    errors at rmds.rmd_start_age.
 
 3d. Employer match logic uses the current month's salary only.
     engine.py computes the match cap from the salary paid in the current month,

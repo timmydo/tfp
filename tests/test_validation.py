@@ -70,6 +70,14 @@ def test_sample_plan_validates():
             lambda d: d["healthcare"]["irmaa"].update({"lookback_years": 0}),
             "healthcare.irmaa.lookback_years: must be >= 1",
         ),
+        (
+            lambda d: d["rmds"].update({"rmd_start_age": 58}),
+            "rmds.rmd_start_age: must be >= 59",
+        ),
+        (
+            lambda d: d["rmds"].update({"rmd_start_age": 121}),
+            "rmds.rmd_start_age: must be <= 120",
+        ),
     ],
 )
 def test_validation_error_cases(tmp_path, sample_plan_dict, mutator, expected_error):
