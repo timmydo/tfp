@@ -46,19 +46,19 @@ Remaining work
     match against the remaining annual eligible contribution amount. This avoids
     under-matching front-loaded or otherwise uneven contribution timing.
 
-4. Validation hardening (from original TODO)
+4. Validation hardening (from original TODO) — DONE
 
-Extend numeric range validation to all remaining percent/rate fields:
-  - growth_rate (sensible bounds, e.g. -1.0 to 1.0)
-  - dividend_yield (>= 0)
-  - inflation_rate (>= 0, <= 0.20)
-  - property_tax_rate (>= 0, <= 0.10)
-  - mortgage interest_rate (>= 0, <= 0.20)
-  - rmd_start_age (>= 59, <= 120)
-  - claiming_age_years / fra_age_years (>= 50, <= 100)
-  - pia_at_fra (>= 0)
-  - all amount fields (>= 0)
-  - transaction fees (>= 0)
+4a. FIXED: Added hard numeric bounds for remaining validated percent/rate fields.
+    validate.py now rejects out-of-range growth_rate, dividend_yield,
+    inflation_rate, property_tax_rate, mortgage.interest_rate,
+    claiming_age_years, fra_age_years, and pia_at_fra values with
+    JSON-path-specific errors.
+
+4b. FIXED: Added non-negative validation for amount-like fields and fees.
+    validate.py now rejects negative balances, contributions, income,
+    expenses, healthcare costs, maintenance amounts, transaction amounts,
+    transaction fees, transfer amounts, Roth conversion annual_amount,
+    and related override/amount settings with JSON-path-specific errors.
 
 5. Code duplication (cleanup, not blocking)
 

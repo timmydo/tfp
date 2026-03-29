@@ -85,6 +85,88 @@ def test_validation_error_cases(tmp_path, sample_plan_dict, mutator, expected_er
     assert expected_error in result.errors
 
 
+@pytest.mark.parametrize(
+    ("mutator", "expected_error"),
+    [
+        (
+            lambda d: d["accounts"][0].update({"growth_rate": -1.1}),
+            "accounts[0].growth_rate: must be >= -1",
+        ),
+        (
+            lambda d: d["accounts"][0].update({"growth_rate": 1.1}),
+            "accounts[0].growth_rate: must be <= 1",
+        ),
+        (
+            lambda d: d["accounts"][0].update({"dividend_yield": -0.01}),
+            "accounts[0].dividend_yield: must be >= 0",
+        ),
+        (
+            lambda d: d["accounts"][0].update({"balance": -1}),
+            "accounts[0].balance: must be >= 0",
+        ),
+        (
+            lambda d: d["contributions"][0].update({"amount": -1}),
+            "contributions[0].amount: must be >= 0",
+        ),
+        (
+            lambda d: d["healthcare"]["pre_medicare"][0].update({"monthly_premium": -1}),
+            "healthcare.pre_medicare[0].monthly_premium: must be >= 0",
+        ),
+        (
+            lambda d: d["social_security"][0].update({"pia_at_fra": -1}),
+            "social_security[0].pia_at_fra: must be >= 0",
+        ),
+        (
+            lambda d: d["social_security"][0].update({"fra_age_years": 49}),
+            "social_security[0].fra_age_years: must be >= 50",
+        ),
+        (
+            lambda d: d["social_security"][0].update({"claiming_age_years": 101}),
+            "social_security[0].claiming_age_years: must be <= 100",
+        ),
+        (
+            lambda d: d["real_assets"][0].update({"property_tax_rate": 0.11}),
+            "real_assets[0].property_tax_rate: must be <= 0.1",
+        ),
+        (
+            lambda d: d["real_assets"][0]["mortgage"].update({"interest_rate": 0.21}),
+            "real_assets[0].mortgage.interest_rate: must be <= 0.2",
+        ),
+        (
+            lambda d: d["real_assets"][0]["maintenance_expenses"][0].update({"amount": -1}),
+            "real_assets[0].maintenance_expenses[0].amount: must be >= 0",
+        ),
+        (
+            lambda d: d["transactions"][0].update({"amount": -1}),
+            "transactions[0].amount: must be >= 0",
+        ),
+        (
+            lambda d: d["transactions"][0].update({"fees": -1}),
+            "transactions[0].fees: must be >= 0",
+        ),
+        (
+            lambda d: d["roth_conversions"][0].update({"annual_amount": -1}),
+            "roth_conversions[0].annual_amount: must be >= 0",
+        ),
+        (
+            lambda d: d["plan_settings"].update({"inflation_rate": -0.01}),
+            "plan_settings.inflation_rate: must be >= 0",
+        ),
+        (
+            lambda d: d["plan_settings"].update({"inflation_rate": 0.21}),
+            "plan_settings.inflation_rate: must be <= 0.2",
+        ),
+        (
+            lambda d: d["tax_settings"].update({"federal_effective_rate_override": 1.1}),
+            "tax_settings.federal_effective_rate_override: must be <= 1",
+        ),
+    ],
+)
+def test_validation_rejects_out_of_range_numeric_fields(tmp_path, sample_plan_dict, mutator, expected_error):
+    result = _run_validation(tmp_path, sample_plan_dict, mutator)
+    assert expected_error in result.errors
+
+
 def test_invalid_owner_path_context(tmp_path, sample_plan_dict):
     def mutator(data):
         data["income"][0]["owner"] = "partner"

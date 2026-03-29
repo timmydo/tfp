@@ -171,6 +171,10 @@ def validate_plan(plan: Plan) -> ValidationResult:
         _check_enum(result, f"{base}.type", account.type, ACCOUNT_TYPES)
         _check_owner(result, f"{base}.owner", account.owner, spouse_exists, allow_joint=False)
         _check_enum(result, f"{base}.dividend_tax_treatment", account.dividend_tax_treatment, DIVIDEND_TAX_TREATMENT)
+        _check_range(result, f"{base}.balance", account.balance, min_value=0)
+        _check_range(result, f"{base}.cost_basis", account.cost_basis, min_value=0)
+        _check_range(result, f"{base}.growth_rate", account.growth_rate, min_value=-1, max_value=1)
+        _check_range(result, f"{base}.dividend_yield", account.dividend_yield, min_value=0)
         _check_range(result, f"{base}.bond_allocation_percent", account.bond_allocation_percent, min_value=0, max_value=100)
         _check_range(result, f"{base}.yearly_fees", account.yearly_fees, min_value=0)
         if account.type == "taxable_brokerage" and account.cost_basis is None:
@@ -187,6 +191,8 @@ def validate_plan(plan: Plan) -> ValidationResult:
             result.errors.append(f"{base}.destination_account: '{item.destination_account}' does not match any account name")
         _check_enum(result, f"{base}.frequency", item.frequency, FREQUENCY_BASIC)
         _check_enum(result, f"{base}.change_over_time", item.change_over_time, CHANGE_OVER_TIME)
+        _check_range(result, f"{base}.amount", item.amount, min_value=0)
+        _check_range(result, f"{base}.change_rate", item.change_rate, min_value=0)
         if item.change_over_time in REQUIRES_CHANGE_RATE and item.change_rate is None:
             result.errors.append(f"{base}.change_rate: required when change_over_time is '{item.change_over_time}'")
         _check_range(result, f"{base}.match_percent", item.employer_match.match_percent if item.employer_match else None, min_value=0, max_value=1)
@@ -219,6 +225,8 @@ def validate_plan(plan: Plan) -> ValidationResult:
         _check_enum(result, f"{base}.frequency", item.frequency, FREQUENCY_EXTENDED)
         _check_enum(result, f"{base}.change_over_time", item.change_over_time, CHANGE_OVER_TIME)
         _check_enum(result, f"{base}.tax_handling", item.tax_handling, INCOME_TAX_HANDLING)
+        _check_range(result, f"{base}.amount", item.amount, min_value=0)
+        _check_range(result, f"{base}.change_rate", item.change_rate, min_value=0)
         if item.tax_handling == "withhold" and item.withhold_percent is None:
             result.errors.append(f"{base}.withhold_percent: required when tax_handling is 'withhold'")
         _check_range(result, f"{base}.withhold_percent", item.withhold_percent, min_value=0, max_value=1)
@@ -242,6 +250,8 @@ def validate_plan(plan: Plan) -> ValidationResult:
         _check_enum(result, f"{base}.frequency", item.frequency, FREQUENCY_EXTENDED)
         _check_enum(result, f"{base}.change_over_time", item.change_over_time, CHANGE_OVER_TIME)
         _check_enum(result, f"{base}.spending_type", item.spending_type, SPENDING_TYPE)
+        _check_range(result, f"{base}.amount", item.amount, min_value=0)
+        _check_range(result, f"{base}.change_rate", item.change_rate, min_value=0)
         if item.change_over_time in REQUIRES_CHANGE_RATE and item.change_rate is None:
             result.errors.append(f"{base}.change_rate: required when change_over_time is '{item.change_over_time}'")
         _check_date(result, f"{base}.start_date", item.start_date)
@@ -260,8 +270,12 @@ def validate_plan(plan: Plan) -> ValidationResult:
         base = f"social_security[{idx}]"
         _check_owner(result, f"{base}.owner", item.owner, spouse_exists, allow_joint=False)
         _check_enum(result, f"{base}.cola_assumption", item.cola_assumption, COLA_ASSUMPTION)
+        _check_range(result, f"{base}.pia_at_fra", item.pia_at_fra, min_value=0)
+        _check_range(result, f"{base}.fra_age_years", item.fra_age_years, min_value=50, max_value=100)
         _check_range(result, f"{base}.fra_age_months", item.fra_age_months, min_value=0, max_value=11)
+        _check_range(result, f"{base}.claiming_age_years", item.claiming_age_years, min_value=50, max_value=100)
         _check_range(result, f"{base}.claiming_age_months", item.claiming_age_months, min_value=0, max_value=11)
+        _check_range(result, f"{base}.cola_rate", item.cola_rate, min_value=0)
         if item.cola_assumption in {"inflation_plus", "inflation_minus"} and item.cola_rate is None:
             result.errors.append(f"{base}.cola_rate: required when cola_assumption is '{item.cola_assumption}'")
 
@@ -269,6 +283,9 @@ def validate_plan(plan: Plan) -> ValidationResult:
         base = f"healthcare.pre_medicare[{idx}]"
         _check_owner(result, f"{base}.owner", item.owner, spouse_exists, allow_joint=False)
         _check_enum(result, f"{base}.change_over_time", item.change_over_time, CHANGE_OVER_TIME)
+        _check_range(result, f"{base}.monthly_premium", item.monthly_premium, min_value=0)
+        _check_range(result, f"{base}.annual_out_of_pocket", item.annual_out_of_pocket, min_value=0)
+        _check_range(result, f"{base}.change_rate", item.change_rate, min_value=0)
         if item.change_over_time in REQUIRES_CHANGE_RATE and item.change_rate is None:
             result.errors.append(f"{base}.change_rate: required when change_over_time is '{item.change_over_time}'")
         _check_date(result, f"{base}.start_date", item.start_date, allow_null=True)
@@ -278,6 +295,11 @@ def validate_plan(plan: Plan) -> ValidationResult:
         base = f"healthcare.post_medicare[{idx}]"
         _check_owner(result, f"{base}.owner", item.owner, spouse_exists, allow_joint=False)
         _check_enum(result, f"{base}.change_over_time", item.change_over_time, CHANGE_OVER_TIME)
+        _check_range(result, f"{base}.part_b_monthly_premium", item.part_b_monthly_premium, min_value=0)
+        _check_range(result, f"{base}.supplement_monthly_premium", item.supplement_monthly_premium, min_value=0)
+        _check_range(result, f"{base}.part_d_monthly_premium", item.part_d_monthly_premium, min_value=0)
+        _check_range(result, f"{base}.annual_out_of_pocket", item.annual_out_of_pocket, min_value=0)
+        _check_range(result, f"{base}.change_rate", item.change_rate, min_value=0)
         if item.change_over_time in REQUIRES_CHANGE_RATE and item.change_rate is None:
             result.errors.append(f"{base}.change_rate: required when change_over_time is '{item.change_over_time}'")
         _check_date(result, f"{base}.medicare_start_date", item.medicare_start_date, allow_null=True)
@@ -289,9 +311,18 @@ def validate_plan(plan: Plan) -> ValidationResult:
         asset_names.add(asset.name)
         asset_index_by_name[asset.name] = idx
         _check_enum(result, f"{base}.change_over_time", asset.change_over_time, CHANGE_OVER_TIME)
+        _check_range(result, f"{base}.current_value", asset.current_value, min_value=0)
+        _check_range(result, f"{base}.purchase_price", asset.purchase_price, min_value=0)
+        _check_range(result, f"{base}.change_rate", asset.change_rate, min_value=0)
+        _check_range(result, f"{base}.property_tax_rate", asset.property_tax_rate, min_value=0, max_value=0.10)
         if asset.change_over_time in REQUIRES_CHANGE_RATE and asset.change_rate is None:
             result.errors.append(f"{base}.change_rate: required when change_over_time is '{asset.change_over_time}'")
+        if asset.mortgage is not None:
+            _check_range(result, f"{base}.mortgage.payment", asset.mortgage.payment, min_value=0)
+            _check_range(result, f"{base}.mortgage.remaining_balance", asset.mortgage.remaining_balance, min_value=0)
+            _check_range(result, f"{base}.mortgage.interest_rate", asset.mortgage.interest_rate, min_value=0, max_value=0.20)
         for midx, mexp in enumerate(asset.maintenance_expenses):
+            _check_range(result, f"{base}.maintenance_expenses[{midx}].amount", mexp.amount, min_value=0)
             _check_enum(result, f"{base}.maintenance_expenses[{midx}].frequency", mexp.frequency, FREQUENCY_BASIC)
 
     for idx, txn in enumerate(plan.transactions):
@@ -299,6 +330,8 @@ def validate_plan(plan: Plan) -> ValidationResult:
         _check_date(result, f"{base}.date", txn.date)
         _check_enum(result, f"{base}.type", txn.type, TRANSACTION_TYPE)
         _check_enum(result, f"{base}.tax_treatment", txn.tax_treatment, TAX_TREATMENT)
+        _check_range(result, f"{base}.amount", txn.amount, min_value=0)
+        _check_range(result, f"{base}.fees", txn.fees, min_value=0)
         if txn.linked_asset and txn.linked_asset not in asset_names:
             result.errors.append(f"{base}.linked_asset: '{txn.linked_asset}' does not match any real asset name")
         if txn.deposit_to_account and txn.deposit_to_account not in account_names:
@@ -319,6 +352,7 @@ def validate_plan(plan: Plan) -> ValidationResult:
             result.errors.append(f"{base}.to_account: '{transfer.to_account}' does not match any account name")
         _check_enum(result, f"{base}.frequency", transfer.frequency, FREQUENCY_EXTENDED)
         _check_enum(result, f"{base}.tax_treatment", transfer.tax_treatment, TAX_TREATMENT)
+        _check_range(result, f"{base}.amount", transfer.amount, min_value=0)
         _check_date(result, f"{base}.start_date", transfer.start_date)
         _check_date(result, f"{base}.end_date", transfer.end_date)
         _check_date_range(
@@ -335,6 +369,7 @@ def validate_plan(plan: Plan) -> ValidationResult:
         base = f"roth_conversions[{idx}]"
         _check_date(result, f"{base}.start_date", conversion.start_date)
         _check_date(result, f"{base}.end_date", conversion.end_date)
+        _check_range(result, f"{base}.annual_amount", conversion.annual_amount, min_value=0)
         _check_date_range(
             result,
             f"{base}.start_date",
@@ -370,6 +405,18 @@ def validate_plan(plan: Plan) -> ValidationResult:
             _check_enum(result, f"withdrawal_strategy.order[{idx}]", kind, ACCOUNT_TYPES)
 
     _check_enum(result, "simulation_settings.mode", plan.simulation_settings.mode, SIM_MODES)
+    _check_range(result, "tax_settings.federal_effective_rate_override", plan.tax_settings.federal_effective_rate_override, min_value=0, max_value=1)
+    _check_range(result, "tax_settings.state_effective_rate_override", plan.tax_settings.state_effective_rate_override, min_value=0, max_value=1)
+    _check_range(result, "tax_settings.capital_gains_rate_override", plan.tax_settings.capital_gains_rate_override, min_value=0, max_value=1)
+    _check_range(result, "tax_settings.standard_deduction_override", plan.tax_settings.standard_deduction_override, min_value=0)
+    _check_range(result, "tax_settings.itemized_deductions.salt_cap", plan.tax_settings.itemized_deductions.salt_cap, min_value=0)
+    _check_range(
+        result,
+        "tax_settings.itemized_deductions.charitable_contributions",
+        plan.tax_settings.itemized_deductions.charitable_contributions,
+        min_value=0,
+    )
+    _check_range(result, "plan_settings.inflation_rate", plan.plan_settings.inflation_rate, min_value=0, max_value=0.20)
     _check_range(
         result,
         "simulation_settings.monte_carlo.correlation",
